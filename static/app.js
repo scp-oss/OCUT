@@ -15,6 +15,72 @@ async function api(path, opts) {
 }
 
 let lastScan = null;
+let browseCurrentPath = null;
+
+async function pickFolder() {
+  try {
+    const res = await api('/api/pick-folder', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: 'Выберите папку EFI/OC' }),
+    });
+    if (res.path) {
+      document.getElementById('root').value = res.path;
+    } else if (res.cancelled) {
+      // user hit Cancel in the native dialog - nothing to do
+    } else if (res.unavailable) {
+      log('Нативный диалог недоступен (не macOS?) - открываю встроенный обзор папок.');
+      openBrowse();
+    }
+  } catch (e) {
+    log('Выбор папки: ' + e.message);
+  }
+}
+
+function openBrowse() {
+  document.getElementById('browse-panel').hidden = false;
+  browseTo(root() || null);
+}
+function closeBrowse() {
+  document.getElementById('browse-panel').hidden = true;
+}
+function browseHome() {
+  browseTo(null); // server defaults an empty path to the home directory
+}
+function browseUp() {
+  const parent = lastBrowseResult && lastBrowseResult.parent;
+  if (parent) browseTo(parent);
+}
+let lastBrowseResult = null;
+
+async function browseTo(path) {
+  try {
+    const qs = path ? `?path=${encodeURIComponent(path)}` : '';
+    const data = await api(`/api/browse${qs}`);
+    lastBrowseResult = data;
+    browseCurrentPath = data.path;
+    document.getElementById('browse-path').value = data.path;
+    document.getElementById('browse-current-hint').textContent = data.is_efi_oc
+      ? 'Эта папка похожа на настоящий EFI/OC (есть Kexts/ и config.plist).'
+      : '';
+    const list = document.getElementById('browse-list');
+    list.innerHTML = '';
+    for (const d of data.dirs) {
+      const li = document.createElement('li');
+      li.textContent = d.name;
+      if (d.is_efi_oc) li.classList.add('efi-oc');
+      li.onclick = () => browseTo(data.path + '/' + d.name);
+      list.appendChild(li);
+    }
+  } catch (e) {
+    log('Обзор: ' + e.message);
+  }
+}
+
+function selectBrowsePath() {
+  if (!browseCurrentPath) return;
+  document.getElementById('root').value = browseCurrentPath;
+  closeBrowse();
+}
 
 async function scanRoot() {
   clearLog();

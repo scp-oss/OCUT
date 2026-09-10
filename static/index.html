@@ -12,12 +12,29 @@
   <label>Путь к папке EFI/OC (например /Volumes/FAT32-16GB/EFI/OC или клон репо):</label>
   <div class="row">
     <input id="root" type="text" placeholder="/Volumes/FAT32-16GB/EFI/OC" size="50">
+    <button onclick="pickFolder()">Выбрать папку...</button>
     <select id="channel">
       <option value="stable">stable</option>
       <option value="prerelease">prerelease</option>
     </select>
     <button onclick="scanRoot()">Сканировать</button>
     <button onclick="checkUpdates()">Проверить обновления</button>
+  </div>
+</section>
+
+<section id="browse-panel" class="browse-panel" hidden>
+  <div class="row">
+    <input id="browse-path" type="text" size="50">
+    <button onclick="browseTo(document.getElementById('browse-path').value)">Перейти</button>
+    <button onclick="browseUp()">Вверх</button>
+    <button onclick="browseHome()">Домой</button>
+    <button onclick="browseTo('/Volumes')">/Volumes</button>
+  </div>
+  <p id="browse-current-hint" class="hint"></p>
+  <ul id="browse-list" class="browse-list"></ul>
+  <div class="row">
+    <button onclick="selectBrowsePath()">Выбрать эту папку</button>
+    <button onclick="closeBrowse()">Отмена</button>
   </div>
 </section>
 

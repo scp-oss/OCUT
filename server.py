@@ -70,7 +70,10 @@ class Handler(BaseHTTPRequestHandler):
         qs = parse_qs(parsed.query)
 
         try:
-            if parsed.path == "/api/scan":
+            if parsed.path == "/api/browse":
+                path = qs.get("path", [""])[0]
+                self._json(200, core.browse_dir(path))
+            elif parsed.path == "/api/scan":
                 root = qs.get("root", [""])[0]
                 self._json(200, core.scan_root(root))
             elif parsed.path == "/api/check-updates":
@@ -91,7 +94,10 @@ class Handler(BaseHTTPRequestHandler):
             body = self._read_json_body()
             log = []
 
-            if parsed.path == "/api/update-kext":
+            if parsed.path == "/api/pick-folder":
+                self._json(200, core.pick_folder_native(body.get("prompt", "Choose the EFI/OC folder")))
+
+            elif parsed.path == "/api/update-kext":
                 result = core.apply_kext_component(body["component"], body["root"], body["channel"], log)
                 self._json(200, {"result": result, "log": log})
 

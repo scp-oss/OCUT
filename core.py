@@ -123,6 +123,16 @@ def sha256_of(path):
     return h.hexdigest()
 
 
+def is_junk_metadata_name(name):
+    """AppleDouble sidecar files (macOS writes '._foo' next to 'foo' on
+    filesystems without native resource-fork/xattr support, like the FAT32
+    EFI system partition every OpenCore install actually uses) and Finder's
+    .DS_Store - never real driver/kext files, but '._Foo.kext' still passes
+    a naive `.endswith('.kext')` check, so this needs checking everywhere
+    directory listings are filtered, not just here."""
+    return name == ".DS_Store" or name.startswith("._")
+
+
 def local_kext_version(kext_path):
     info = os.path.join(kext_path, "Contents", "Info.plist")
     if not os.path.isfile(info):
@@ -181,7 +191,7 @@ def scan_root(root):
     other_kexts = []
     if os.path.isdir(kexts_dir):
         for name in sorted(os.listdir(kexts_dir)):
-            if not name.endswith(".kext"):
+            if is_junk_metadata_name(name) or not name.endswith(".kext"):
                 continue
             if name in MANUAL_ONLY_KEXTS:
                 manual_kexts.append(name)
@@ -203,6 +213,8 @@ def scan_root(root):
     if os.path.isdir(drivers_dir):
         recorded_drivers = state.get("drivers", {})
         for fname in sorted(os.listdir(drivers_dir)):
+            if is_junk_metadata_name(fname):
+                continue
             fpath = os.path.join(drivers_dir, fname)
             if not os.path.isfile(fpath):
                 continue
@@ -381,6 +393,8 @@ def apply_opencore(root, channel, parts, log):
             state.setdefault("drivers", {})
             if os.path.isdir(local_drivers_dir) and os.path.isdir(new_drivers_dir):
                 for fname in os.listdir(local_drivers_dir):
+                    if is_junk_metadata_name(fname):
+                        continue
                     src = os.path.join(new_drivers_dir, fname)
                     dst = os.path.join(local_drivers_dir, fname)
                     if os.path.isfile(src):

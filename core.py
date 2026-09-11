@@ -33,7 +33,7 @@ DEFAULT_COMPONENTS = [
     {"name": "RestrictEvents", "repo": "acidanthera/RestrictEvents", "kexts": ["RestrictEvents.kext"]},
     {"name": "BrcmPatchRAM", "repo": "acidanthera/BrcmPatchRAM", "kexts": ["BlueToolFixup.kext"]},
     {"name": "USBToolBox", "repo": "USBToolBox/kext", "kexts": ["USBToolBox.kext"]},
-    {"name": "IntelMausiEthernet", "repo": "Mieze/IntelMausiEthernet", "kexts": ["IntelMausiEthernet.kext"]},
+    {"name": "IntelMausi", "repo": "acidanthera/IntelMausi", "kexts": ["IntelMausi.kext"]},
 ]
 OPENCORE_REPO = "acidanthera/OpenCorePkg"
 
@@ -44,12 +44,18 @@ OPENCORE_REPO = "acidanthera/OpenCorePkg"
 # (no REST rate limit, since it's not a github.com API call). Made the
 # primary source per direct request - resolve_component_build() falls back
 # to the component's own GitHub releases only when Dortania doesn't track
-# it (confirmed absent for USBToolBox and for IntelMausiEthernet
-# specifically - Dortania tracks a differently-named "IntelMausi" project
-# built from a different upstream, acidanthera/IntelMausi rather than
-# Mieze/IntelMausiEthernet, likely producing a differently-named kext
-# bundle too, so it's deliberately NOT auto-mapped as an alias here) or
-# when fetching the manifest itself fails.
+# it (confirmed absent for USBToolBox) or when fetching the manifest
+# itself fails.
+#
+# IntelMausiEthernet -> IntelMausi (2026-09): Mieze/IntelMausiEthernet's
+# last real release is 3.0.0 with no activity since - acidanthera forked
+# it as IntelMausi (own version numbering from 1.0.0, unrelated to
+# Mieze's 3.x) and is the one Dortania actually tracks. Verified by
+# downloading the real Dortania build and inspecting the zip directly
+# (not just assuming from the project name): the bundle really is
+# IntelMausi.kext, not IntelMausiEthernet.kext - config.plist's
+# Kernel->Add BundlePath/ExecutablePath in opencore-h410sb were updated
+# to match in the same pass, this isn't just a source-URL swap.
 DORTANIA_MANIFEST_URL = "https://raw.githubusercontent.com/dortania/build-repo/builds/latest.json"
 
 

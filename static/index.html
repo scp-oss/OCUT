@@ -77,21 +77,12 @@
 
   <div id="add-component-panel" class="browse-panel" hidden>
     <div class="row add-tabs">
-      <button class="tab-btn" data-tab="manual" onclick="showAddTab('manual')">Вручную</button>
       <button class="tab-btn" data-tab="catalog" onclick="showAddTab('catalog')">Из каталога</button>
       <button class="tab-btn" data-tab="local" onclick="showAddTab('local')">С диска</button>
+      <button class="tab-btn" data-tab="manual" onclick="showAddTab('manual')">Вручную</button>
     </div>
 
-    <div id="add-tab-manual" class="add-tab">
-      <div class="row">
-        <input id="add-comp-repo" type="text" placeholder="owner/repo (например acidanthera/AppleALC)" size="30">
-        <input id="add-comp-kexts" type="text" placeholder="файлы .kext через запятую" size="30">
-        <button onclick="submitAddComponent()">Добавить</button>
-      </div>
-      <p class="hint">Название компонента берётся из репозитория автоматически.</p>
-    </div>
-
-    <div id="add-tab-catalog" class="add-tab" hidden>
+    <div id="add-tab-catalog" class="add-tab">
       <div class="row">
         <input id="catalog-filter" type="text" placeholder="Поиск по названию/категории..." oninput="renderCatalogTable()" size="30">
       </div>
@@ -117,6 +108,15 @@
       <p class="hint">Копирует выбранный .kext в Kexts/ этой EFI/OC. Подключить его в конфиг (Kernel→Add) можно
       после этого кнопкой "+" в таблице выше — так же, как для любого другого уже лежащего, но не подключённого
       кекста.</p>
+    </div>
+
+    <div id="add-tab-manual" class="add-tab" hidden>
+      <div class="row">
+        <input id="add-comp-repo" type="text" placeholder="owner/repo (например acidanthera/AppleALC)" size="30">
+        <input id="add-comp-kexts" type="text" placeholder="файлы .kext через запятую" size="30">
+        <button onclick="submitAddComponent()">Добавить</button>
+      </div>
+      <p class="hint">Название компонента берётся из репозитория автоматически.</p>
     </div>
 
     <div class="row">

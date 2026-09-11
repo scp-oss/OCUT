@@ -418,7 +418,7 @@ async function wireKextToConfig(bundle) {
 
 function openAddComponent() {
   document.getElementById('add-component-panel').hidden = false;
-  showAddTab('manual');
+  showAddTab('catalog');
 }
 function closeAddComponent() {
   document.getElementById('add-component-panel').hidden = true;

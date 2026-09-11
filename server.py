@@ -85,6 +85,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, core.check_updates(root, channel))
             elif parsed.path == "/api/components":
                 self._json(200, core.load_components())
+            elif parsed.path == "/api/kext-catalog":
+                self._json(200, core.get_kext_catalog())
             else:
                 self._serve_static(parsed.path)
         except Exception as e:
@@ -103,12 +105,21 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, core.pick_folder_native(body.get("prompt", "Choose the EFI/OC folder")))
 
             elif parsed.path == "/api/components/add":
-                result = core.add_component(body["name"], body["repo"], body["kexts"])
+                result = core.add_component(body["repo"], body["kexts"], name=body.get("name"))
                 self._json(200, {"components": result})
 
             elif parsed.path == "/api/components/remove":
                 result = core.remove_component(body["name"])
                 self._json(200, {"components": result})
+
+            elif parsed.path == "/api/kext/add-from-catalog":
+                self._json(200, core.add_kexts_from_catalog(body["names"]))
+
+            elif parsed.path == "/api/kext/list-in-folder":
+                self._json(200, {"kexts": core.list_kexts_in_folder(body["folder"])})
+
+            elif parsed.path == "/api/kext/import-from-folder":
+                self._json(200, core.import_kext_from_folder(body["root"], body["folder"], body["bundle"]))
 
             elif parsed.path == "/api/kext/toggle":
                 self._json(200, core.set_kext_enabled(body["root"], body["bundle"], body["enabled"]))
@@ -119,6 +130,9 @@ class Handler(BaseHTTPRequestHandler):
             elif parsed.path == "/api/kext/remove-from-config":
                 self._json(200, core.remove_kext_from_config(body["root"], body["bundle"]))
 
+            elif parsed.path == "/api/kext/remove-from-config-bulk":
+                self._json(200, core.remove_kexts_from_config_bulk(body["root"], body["bundles"]))
+
             elif parsed.path == "/api/driver/toggle":
                 self._json(200, core.set_driver_enabled(body["root"], body["file"], body["enabled"]))
 
@@ -127,6 +141,9 @@ class Handler(BaseHTTPRequestHandler):
 
             elif parsed.path == "/api/driver/remove-from-config":
                 self._json(200, core.remove_driver_from_config(body["root"], body["file"]))
+
+            elif parsed.path == "/api/driver/remove-from-config-bulk":
+                self._json(200, core.remove_drivers_from_config_bulk(body["root"], body["files"]))
 
             elif parsed.path == "/api/driver/fetch-from-opencore":
                 result = core.fetch_driver_from_opencore(body["root"], body["file"], body["channel"], log)

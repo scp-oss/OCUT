@@ -37,6 +37,99 @@ DEFAULT_COMPONENTS = [
 ]
 OPENCORE_REPO = "acidanthera/OpenCorePkg"
 
+# Curated kext picker for "+ Добавить" - parsed directly (regex over the raw
+# source, not executed) from lzhoang2801/OpCore-Simplify's own
+# Scripts/datasets/kext_data.py, per direct request to reuse that project's
+# list rather than making users type an owner/repo blind. Only the 76
+# entries that ship a real github_repo were kept (OpCore-Simplify has ~12
+# more - old Apple-signed system kexts and similar - that point at
+# nightly.link/direct-archive URLs instead of a repo with releases, which
+# doesn't fit this tool's update model at all). The catalog's own "name" is
+# the actual kext product name, not just the project/repo name - verified
+# against BrcmPatchRAM's entry ("BlueToolFixup", not "BrcmPatchRAM") before
+# trusting `name + ".kext"` as the bundle filename for every entry; this
+# project already did the "what's the real kext called" homework that bit
+# us with the IntelMausiEthernet/IntelMausi mixup, so entries picked from
+# here don't need a download-and-peek step the way a raw manual add would.
+KEXT_CATALOG = [
+    {"name": "Lilu", "description": "For arbitrary kext, library, and program patching", "category": "Required", "owner": "acidanthera", "repo": "Lilu"},
+    {"name": "VirtualSMC", "description": "Advanced Apple SMC emulator in the kernel", "category": "Required", "owner": "acidanthera", "repo": "VirtualSMC"},
+    {"name": "SMCBatteryManager", "description": "Manages, monitors, and reports on battery status", "category": "VirtualSMC Plugins", "owner": "acidanthera", "repo": "VirtualSMC"},
+    {"name": "SMCDellSensors", "description": "Enables fan monitoring and control on Dell computers", "category": "VirtualSMC Plugins", "owner": "acidanthera", "repo": "VirtualSMC"},
+    {"name": "SMCLightSensor", "description": "Allows system utilize ambient light sensor device", "category": "VirtualSMC Plugins", "owner": "acidanthera", "repo": "VirtualSMC"},
+    {"name": "SMCProcessor", "description": "Manages Intel CPU temperature sensors", "category": "VirtualSMC Plugins", "owner": "acidanthera", "repo": "VirtualSMC"},
+    {"name": "SMCRadeonSensors", "description": "Provides temperature readings for AMD GPUs", "category": "VirtualSMC Plugins", "owner": "ChefKissInc", "repo": "SMCRadeonSensors"},
+    {"name": "SMCSuperIO", "description": "Monitoring hardware sensors and controlling fan speeds", "category": "VirtualSMC Plugins", "owner": "acidanthera", "repo": "VirtualSMC"},
+    {"name": "NootRX", "description": "The rDNA 2 dGPU support patch kext", "category": "Graphics", "owner": "ChefKissInc", "repo": "NootRX"},
+    {"name": "NootedRed", "description": "The AMD Vega iGPU support kext", "category": "Graphics", "owner": "ChefKissInc", "repo": "NootedRed"},
+    {"name": "WhateverGreen", "description": "Various patches necessary for GPUs are pre-supported", "category": "Graphics", "owner": "acidanthera", "repo": "WhateverGreen"},
+    {"name": "AppleALC", "description": "Native macOS HD audio for not officially supported codecs", "category": "Audio", "owner": "acidanthera", "repo": "AppleALC"},
+    {"name": "AirportBrcmFixup", "description": "Patches required for non-native Broadcom Wi-Fi cards", "category": "Wi-Fi", "owner": "acidanthera", "repo": "AirportBrcmFixup"},
+    {"name": "AirportItlwm", "description": "Intel Wi-Fi drivers support the native macOS Wi-Fi interface", "category": "Wi-Fi", "owner": "DexterSLamb", "repo": "itlwm"},
+    {"name": "Feixiao", "description": "Realtek WLAN (rtw88) driver for macOS", "category": "Wi-Fi", "owner": "thegwchr", "repo": "Feixiao"},
+    {"name": "itlwm", "description": "Intel Wi-Fi drivers. Spoofs as Ethernet and connects to Wi-Fi via Heliport", "category": "Wi-Fi", "owner": "DexterSLamb", "repo": "itlwm"},
+    {"name": "Ath3kBT", "description": "Uploads firmware to enable Atheros Bluetooth support", "category": "Bluetooth", "owner": "zxystd", "repo": "AthBluetoothFirmware"},
+    {"name": "Ath3kBTInjector", "description": "Uploads firmware to enable Atheros Bluetooth support", "category": "Bluetooth", "owner": "zxystd", "repo": "AthBluetoothFirmware"},
+    {"name": "BlueToolFixup", "description": "Patches Bluetooth stack to support third-party cards", "category": "Bluetooth", "owner": "acidanthera", "repo": "BrcmPatchRAM"},
+    {"name": "BrcmBluetoothInjector", "description": "Enables the Broadcom Bluetooth on/off switch on older versions", "category": "Bluetooth", "owner": "acidanthera", "repo": "BrcmPatchRAM"},
+    {"name": "BrcmFirmwareData", "description": "Applies PatchRAM updates for Broadcom RAMUSB based devices", "category": "Bluetooth", "owner": "acidanthera", "repo": "BrcmPatchRAM"},
+    {"name": "BrcmPatchRAM2", "description": "Applies PatchRAM updates for Broadcom RAMUSB based devices", "category": "Bluetooth", "owner": "acidanthera", "repo": "BrcmPatchRAM"},
+    {"name": "BrcmPatchRAM3", "description": "Applies PatchRAM updates for Broadcom RAMUSB based devices", "category": "Bluetooth", "owner": "acidanthera", "repo": "BrcmPatchRAM"},
+    {"name": "IntelBluetoothFirmware", "description": "Uploads firmware to enable Intel Bluetooth support", "category": "Bluetooth", "owner": "lshbluesky", "repo": "IntelBluetoothFirmware"},
+    {"name": "IntelBTPatcher", "description": "Fixes Intel Bluetooth bugs for better connectivity", "category": "Bluetooth", "owner": "lshbluesky", "repo": "IntelBluetoothFirmware"},
+    {"name": "IntelBluetoothInjector", "description": "Enables the Intel Bluetooth on/off switch on older versions", "category": "Bluetooth", "owner": "lshbluesky", "repo": "IntelBluetoothFirmware"},
+    {"name": "RealtekBluetoothFirmware", "description": "Uploads firmware to enable Realtek Bluetooth support", "category": "Bluetooth", "owner": "thegwchr", "repo": "RealtekBluetoothFirmware"},
+    {"name": "AppleIGB", "description": "Provides support for Intel's IGB Ethernet controllers", "category": "Ethernet", "owner": "donatengit", "repo": "AppleIGB"},
+    {"name": "AppleIGC", "description": "Provides support for Intel 2.5G Ethernet(i225/i226)", "category": "Ethernet", "owner": "SongXiaoXi", "repo": "AppleIGC"},
+    {"name": "AtherosE2200Ethernet", "description": "Provides support for Atheros E2200 family", "category": "Ethernet", "owner": "Mieze", "repo": "AtherosE2200Ethernet"},
+    {"name": "HoRNDIS", "description": "Use the USB tethering mode of the Android phone to access the Internet", "category": "Ethernet", "owner": "TomHeaven", "repo": "HoRNDIS"},
+    {"name": "IntelLucy", "description": "Provides support for Intel X500 family", "category": "Ethernet", "owner": "Mieze", "repo": "IntelLucy"},
+    {"name": "IntelMausiEthernet", "description": "Intel Ethernet LAN driver for macOS", "category": "Ethernet", "owner": "CloverHackyColor", "repo": "IntelMausiEthernet"},
+    {"name": "LucyRTL8125Ethernet", "description": "Provides support for Realtek RTL8125 family", "category": "Ethernet", "owner": "Mieze", "repo": "LucyRTL8125Ethernet"},
+    {"name": "NullEthernet", "description": "Creates a Null Ethernet when no supported network hardware is present", "category": "Ethernet", "owner": "RehabMan", "repo": "os-x-null-ethernet"},
+    {"name": "RealtekRTL8100", "description": "Provides support for Realtek RTL8100 family", "category": "Ethernet", "owner": "Mieze", "repo": "RealtekRTL8100"},
+    {"name": "RealtekRTL8111", "description": "Provides support for Realtek RTL8111/8168 family", "category": "Ethernet", "owner": "Mieze", "repo": "RTL8111_driver_for_OS_X"},
+    {"name": "RTL812xLucy", "description": "A new macOS driver for the Realtek RTL812x family", "category": "Ethernet", "owner": "Mieze", "repo": "RTL812xLucy"},
+    {"name": "GenericUSBXHCI", "description": "Fixes USB 3.0 issues found on some Ryzen APU-based", "category": "USB", "owner": "RattletraPM", "repo": "GUX-RyzenXHCIFix"},
+    {"name": "USBToolBox", "description": "Flexible USB mapping", "category": "USB", "owner": "USBToolBox", "repo": "kext"},
+    {"name": "UTBDefault", "description": "Enables all USB ports (assumes no port limit)", "category": "USB", "owner": "USBToolBox", "repo": "kext"},
+    {"name": "XHCI-unsupported", "description": "Enables USB 3.0 support for unsupported xHCI controllers", "category": "USB", "owner": "daliansky", "repo": "OS-X-USB-Inject-All"},
+    {"name": "AlpsHID", "description": "Brings native multitouch support to the Alps I2C touchpad", "category": "Input", "owner": "blankmac", "repo": "AlpsHID"},
+    {"name": "VoodooInput", "description": "Provides Magic Trackpad 2 software emulation for arbitrary input sources", "category": "Input", "owner": "acidanthera", "repo": "VoodooInput"},
+    {"name": "VoodooPS2Controller", "description": "Provides support for PS/2 keyboards, trackpads, and mouse", "category": "Input", "owner": "acidanthera", "repo": "VoodooPS2"},
+    {"name": "VoodooRMI", "description": "Synaptic Trackpad kext over SMBus/I2C", "category": "Input", "owner": "VoodooSMBus", "repo": "VoodooRMI"},
+    {"name": "VoodooSMBus", "description": "i2c-i801 + ELAN SMBus Touchpad kext", "category": "Input", "owner": "VoodooSMBus", "repo": "VoodooSMBus"},
+    {"name": "VoodooI2C", "description": "Intel I2C controller and slave device drivers", "category": "Input", "owner": "VoodooI2C", "repo": "VoodooI2C"},
+    {"name": "VoodooI2CAtmelMXT", "description": "A satellite kext for Atmel MXT I2C touchscreen", "category": "Input", "owner": "VoodooI2C", "repo": "VoodooI2C"},
+    {"name": "VoodooI2CELAN", "description": "A satellite kext for ELAN I2C touchpads", "category": "Input", "owner": "VoodooI2C", "repo": "VoodooI2C"},
+    {"name": "VoodooI2CFTE", "description": "A satellite kext for FTE based touchpads", "category": "Input", "owner": "VoodooI2C", "repo": "VoodooI2C"},
+    {"name": "VoodooI2CHID", "description": "A satellite kext for HID I2C or ELAN1200+ input devices", "category": "Input", "owner": "VoodooI2C", "repo": "VoodooI2C"},
+    {"name": "VoodooI2CSynaptics", "description": "A satellite kext for Synaptics I2C touchpads", "category": "Input", "owner": "VoodooI2C", "repo": "VoodooI2C"},
+    {"name": "AsusSMC", "description": "Supports ALS, keyboard backlight, and Fn keys on ASUS laptops", "category": "Brand Specific", "owner": "hieplpvip", "repo": "AsusSMC"},
+    {"name": "BigSurface", "description": "A fully intergrated kext for all Surface related hardwares", "category": "Brand Specific", "owner": "Xiashangning", "repo": "BigSurface"},
+    {"name": "YogaSMC", "description": "Enables support for syncing SMC keys, controlling sensors and managing vendor-specific features", "category": "Brand Specific", "owner": "zhen-zen", "repo": "YogaSMC"},
+    {"name": "NVMeFix", "description": "Addresses compatibility and performance issues with NVMe SSDs", "category": "Storage", "owner": "acidanthera", "repo": "NVMeFix"},
+    {"name": "PC711Probe", "description": "A probe kext for SK Hynix PC711 NVMe SSDs", "category": "Storage", "owner": "hrx114514x", "repo": "PC711Probe"},
+    {"name": "PC711ProbeForce", "description": "Applies the MSI-X compatibility path to all NVMe controllers", "category": "Storage", "owner": "hrx114514x", "repo": "PC711Probe"},
+    {"name": "RealtekCardReader", "description": "Realtek PCIe/USB-based SD card reader driver", "category": "Card Reader", "owner": "0xFireWolf", "repo": "RealtekCardReader"},
+    {"name": "RealtekCardReaderFriend", "description": "Makes System Information recognize your Realtek card reader", "category": "Card Reader", "owner": "0xFireWolf", "repo": "RealtekCardReaderFriend"},
+    {"name": "Sinetek-rtsx", "description": "Realtek PCIe-based SD card reader driver", "category": "Card Reader", "owner": "cholonam", "repo": "Sinetek-rtsx"},
+    {"name": "AmdTscSync", "description": "A modified version of VoodooTSCSync for AMD CPUs", "category": "TSC Synchronization", "owner": "naveenkrdy", "repo": "AmdTscSync"},
+    {"name": "VoodooTSCSync", "description": "A kernel extension which will synchronize the TSC on Intel CPUs", "category": "TSC Synchronization", "owner": "RehabMan", "repo": "VoodooTSCSync"},
+    {"name": "CpuTscSync", "description": "Lilu plugin for TSC sync and disabling xcpm_urgency on Intel CPUs", "category": "TSC Synchronization", "owner": "acidanthera", "repo": "CpuTscSync"},
+    {"name": "ForgedInvariant", "description": "The plug & play kext for syncing the TSC on AMD & Intel", "category": "TSC Synchronization", "owner": "ChefKissInc", "repo": "ForgedInvariant"},
+    {"name": "BrightnessKeys", "description": "Handler for brightness keys without DSDT patches", "category": "Extras", "owner": "acidanthera", "repo": "BrightnessKeys"},
+    {"name": "CPUFriend", "description": "Dynamic power management data injection (requires CPUFriendDataProvider)", "category": "Extras", "owner": "acidanthera", "repo": "CPUFriend"},
+    {"name": "CpuTopologyRebuild", "description": "Optimizes the core configuration of Intel Alder Lake CPUs+", "category": "Extras", "owner": "b00t0x", "repo": "CpuTopologyRebuild"},
+    {"name": "CryptexFixup", "description": "Various patches to install Rosetta cryptex", "category": "Extras", "owner": "acidanthera", "repo": "CryptexFixup"},
+    {"name": "ECEnabler", "description": "Allows reading Embedded Controller fields over 1 byte long", "category": "Extras", "owner": "1Revenger1", "repo": "ECEnabler"},
+    {"name": "FeatureUnlock", "description": "Enable additional features on unsupported hardware", "category": "Extras", "owner": "acidanthera", "repo": "FeatureUnlock"},
+    {"name": "HibernationFixup", "description": "Fixes hibernation compatibility issues", "category": "Extras", "owner": "acidanthera", "repo": "HibernationFixup"},
+    {"name": "NoTouchID", "description": "Avoid lag in authentication dialogs for board IDs with Touch ID sensors", "category": "Extras", "owner": "al3xtjames", "repo": "NoTouchID"},
+    {"name": "RestrictEvents", "description": "Blocking unwanted processes and unlocking features", "category": "Extras", "owner": "acidanthera", "repo": "RestrictEvents"},
+    {"name": "RTCMemoryFixup", "description": "Emulate some offsets in your CMOS (RTC) memory", "category": "Extras", "owner": "acidanthera", "repo": "RTCMemoryFixup"},
+]
+
 # Dortania's build-repo (https://dortania.github.io/builds/) rebuilds
 # acidanthera-ecosystem projects from upstream `master` on every commit -
 # ahead of official tagged releases, and unlike hitting api.github.com per
@@ -79,7 +172,13 @@ def save_components(components):
         json.dump(components, f, indent=2)
 
 
-def add_component(name, repo, kexts):
+def add_component(repo, kexts, name=None):
+    """`name` is optional - the tracked component's display name is just
+    the repo's own last path segment unless the caller overrides it
+    (nothing in the UI does anymore; a typed-name field was removed as
+    redundant per direct request, since the repo already implies it)."""
+    if not name:
+        name = repo.rstrip("/").split("/")[-1]
     components = load_components()
     if any(c["name"] == name for c in components):
         raise RuntimeError(f"'{name}' уже отслеживается")
@@ -95,6 +194,86 @@ def remove_component(name):
         raise RuntimeError(f"'{name}' не найден среди отслеживаемых")
     save_components(filtered)
     return filtered
+
+
+def get_kext_catalog():
+    """Curated picker data for the '+ Добавить' -> 'Из каталога' tab - see
+    KEXT_CATALOG's own comment for provenance. Returned as-is; grouping by
+    category and any search filtering happens client-side, this is just
+    the raw list."""
+    return KEXT_CATALOG
+
+
+def add_kexts_from_catalog(names):
+    """Add one or more catalog picks as tracked components, grouped by
+    their real owner/repo - several catalog entries can share one repo
+    (e.g. every VirtualSMC plugin, or BrcmPatchRAM's five kexts), and this
+    merges into an already-tracked component for that repo instead of
+    erroring, so re-picking something already tracked is a harmless
+    no-op rather than a duplicate-name failure. A newly created
+    component's name is the repo's own name (last path segment) - same
+    auto-derivation as the manual add-by-repo path, there's no separate
+    user-typed name here either."""
+    catalog_by_name = {k["name"]: k for k in KEXT_CATALOG}
+    unknown = [n for n in names if n not in catalog_by_name]
+    if unknown:
+        raise RuntimeError(f"неизвестные записи каталога: {', '.join(unknown)}")
+
+    components = load_components()
+    by_repo = {c["repo"]: c for c in components}
+    added = []
+    for n in names:
+        entry = catalog_by_name[n]
+        repo = f"{entry['owner']}/{entry['repo']}"
+        bundle = f"{entry['name']}.kext"
+        comp = by_repo.get(repo)
+        if comp is None:
+            comp = {"name": entry["repo"], "repo": repo, "kexts": []}
+            components.append(comp)
+            by_repo[repo] = comp
+        if bundle not in comp["kexts"]:
+            comp["kexts"].append(bundle)
+            added.append(bundle)
+    save_components(components)
+    return {"components": components, "added": added}
+
+
+def list_kexts_in_folder(folder):
+    """.kext bundles directly inside `folder` (one level, not recursive) -
+    backs the '+ Добавить' -> 'С диска' flow: point the native folder
+    picker at wherever a kext was downloaded/built/AirDropped to, and pick
+    which bundle(s) inside it to copy into Kexts/."""
+    if not os.path.isdir(folder):
+        raise RuntimeError(f"'{folder}' не папка")
+    found = []
+    for name in sorted(os.listdir(folder)):
+        if is_junk_metadata_name(name):
+            continue
+        if name.endswith(".kext") and os.path.isdir(os.path.join(folder, name)):
+            found.append(name)
+    return found
+
+
+def import_kext_from_folder(root, source_folder, bundle_name):
+    """Copy an already-on-disk .kext bundle (not downloaded by OCUT itself)
+    into this EFI's Kexts/ folder. Deliberately does not touch
+    config.plist or components.json - wiring it into Kernel->Add is the
+    same separate, explicit add_kext_to_config() step every other
+    present-but-unwired kext already goes through, so an imported kext
+    shows up exactly like one dropped in by hand."""
+    if is_junk_metadata_name(bundle_name) or not bundle_name.endswith(".kext"):
+        raise RuntimeError(f"'{bundle_name}' не похоже на .kext")
+    src = os.path.join(source_folder, bundle_name)
+    if not os.path.isdir(src):
+        raise RuntimeError(f"'{bundle_name}' не найден в '{source_folder}'")
+    kexts_dir = os.path.join(root, "Kexts")
+    if not os.path.isdir(kexts_dir):
+        raise RuntimeError(f"'{root}' doesn't look like an EFI/OC checkout (no Kexts/ found)")
+    dst = os.path.join(kexts_dir, bundle_name)
+    if os.path.exists(dst):
+        raise RuntimeError(f"{bundle_name} уже есть в Kexts/")
+    shutil.copytree(src, dst)
+    return {"bundle": bundle_name, "copied_to": dst}
 
 # Per-board artifacts that must never be silently overwritten by an
 # upstream "generic" version - they're generated/curated specifically for
@@ -414,6 +593,22 @@ def remove_kext_from_config(root, bundle):
     return {"bundle": bundle, "removed": True}
 
 
+def remove_kexts_from_config_bulk(root, bundles):
+    """Bulk version for the table's checkbox multi-select + 'Удалить' ->
+    'Подтвердить удаление' flow - tolerant of an already-unwired bundle in
+    the selection (skipped, not an error), since the row checkbox is a
+    plain row-selector and doesn't restrict selection to only-wired
+    rows."""
+    removed, skipped = [], []
+    for bundle in bundles:
+        try:
+            remove_kext_from_config(root, bundle)
+            removed.append(bundle)
+        except RuntimeError:
+            skipped.append(bundle)
+    return {"removed": removed, "skipped": skipped}
+
+
 # ------------------------------------------------------------ UEFI->Drivers
 
 def _find_uefi_driver_index(entries, filename):
@@ -479,6 +674,20 @@ def remove_driver_from_config(root, filename):
     del entries[idx]
     _save_config(root, config)
     return {"file": filename, "removed": True}
+
+
+def remove_drivers_from_config_bulk(root, files):
+    """Bulk version for the drivers table's checkbox multi-select +
+    'Удалить' -> 'Подтвердить удаление' flow - same tolerant-of-unwired
+    semantics as remove_kexts_from_config_bulk()."""
+    removed, skipped = [], []
+    for filename in files:
+        try:
+            remove_driver_from_config(root, filename)
+            removed.append(filename)
+        except RuntimeError:
+            skipped.append(filename)
+    return {"removed": removed, "skipped": skipped}
 
 
 def fetch_driver_from_opencore(root, filename, channel, log):

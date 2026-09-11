@@ -63,23 +63,64 @@
 <section id="components-section" hidden>
   <h2>Кексты</h2>
   <table id="components-table">
-    <thead><tr><th>Вкл</th><th>Компонент</th><th>Текущая версия</th><th>Доступная</th><th>Статус</th><th>Действия</th></tr></thead>
+    <thead><tr><th></th><th>Компонент</th><th>Текущая версия</th><th>Доступная</th><th>Статус</th></tr></thead>
     <tbody></tbody>
   </table>
   <div class="row list-actions">
+    <button onclick="selectAllRows('components-table')">Выделить всё</button>
     <button onclick="updateAllComponents()">Обновить всё</button>
     <button class="plus-minus" onclick="openAddComponent()">+ Добавить</button>
+    <button class="danger-btn" id="components-delete-btn" onclick="startBulkDelete('components-table')">Удалить</button>
+    <button class="danger-btn" id="components-confirm-btn" onclick="confirmBulkDelete('components-table')" hidden>Подтвердить удаление</button>
+    <button id="components-cancel-btn" onclick="cancelBulkDelete('components-table')" hidden>Отмена</button>
   </div>
 
   <div id="add-component-panel" class="browse-panel" hidden>
-    <div class="row">
-      <input id="add-comp-name" type="text" placeholder="Название (например AppleALC)" size="20">
-      <input id="add-comp-repo" type="text" placeholder="owner/repo (например acidanthera/AppleALC)" size="30">
-      <input id="add-comp-kexts" type="text" placeholder="файлы .kext через запятую" size="30">
+    <div class="row add-tabs">
+      <button class="tab-btn" data-tab="manual" onclick="showAddTab('manual')">Вручную</button>
+      <button class="tab-btn" data-tab="catalog" onclick="showAddTab('catalog')">Из каталога</button>
+      <button class="tab-btn" data-tab="local" onclick="showAddTab('local')">С диска</button>
     </div>
+
+    <div id="add-tab-manual" class="add-tab">
+      <div class="row">
+        <input id="add-comp-repo" type="text" placeholder="owner/repo (например acidanthera/AppleALC)" size="30">
+        <input id="add-comp-kexts" type="text" placeholder="файлы .kext через запятую" size="30">
+        <button onclick="submitAddComponent()">Добавить</button>
+      </div>
+      <p class="hint">Название компонента берётся из репозитория автоматически.</p>
+    </div>
+
+    <div id="add-tab-catalog" class="add-tab" hidden>
+      <div class="row">
+        <input id="catalog-filter" type="text" placeholder="Поиск по названию/категории..." oninput="renderCatalogTable()" size="30">
+      </div>
+      <div id="catalog-table-wrap">
+        <table id="catalog-table">
+          <thead><tr><th></th><th>Название</th><th>Категория</th><th>Описание</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="row">
+        <button onclick="submitAddFromCatalog()">Добавить выбранные</button>
+      </div>
+      <p class="hint">Список из каталога кекстов OpCore-Simplify — скачивается через Dortania/GitHub, как и всё
+      остальное в этом инструменте.</p>
+    </div>
+
+    <div id="add-tab-local" class="add-tab" hidden>
+      <div class="row">
+        <button onclick="pickLocalKextFolder()">Выбрать папку с кекстом...</button>
+        <span id="local-kext-folder-hint" class="hint"></span>
+      </div>
+      <ul id="local-kext-list" class="browse-list"></ul>
+      <p class="hint">Копирует выбранный .kext в Kexts/ этой EFI/OC. Подключить его в конфиг (Kernel→Add) можно
+      после этого кнопкой "+" в таблице выше — так же, как для любого другого уже лежащего, но не подключённого
+      кекста.</p>
+    </div>
+
     <div class="row">
-      <button onclick="submitAddComponent()">Добавить</button>
-      <button onclick="closeAddComponent()">Отмена</button>
+      <button onclick="closeAddComponent()">Закрыть</button>
     </div>
   </div>
 </section>
@@ -89,12 +130,16 @@
   <p class="hint">Все драйверы идут одной сборкой OpenCorePkg (нет отдельной версии на файл) — "обновить" для любого
   из них перекачивает Drivers/*.efi целиком, как и кнопка в блоке OpenCorePkg выше.</p>
   <table id="drivers-table">
-    <thead><tr><th>Вкл</th><th>Файл</th><th>Последняя применённая версия</th><th>Изменился с тех пор?</th><th>Статус</th><th>Действия</th></tr></thead>
+    <thead><tr><th></th><th>Файл</th><th>Последняя применённая версия</th><th>Изменился с тех пор?</th><th>Статус</th></tr></thead>
     <tbody></tbody>
   </table>
   <div class="row list-actions">
+    <button onclick="selectAllRows('drivers-table')">Выделить всё</button>
     <button onclick="updateOpenCore()">Обновить Drivers/*.efi</button>
     <button class="plus-minus" onclick="openAddDriver()">+ Добавить из текущей сборки</button>
+    <button class="danger-btn" id="drivers-delete-btn" onclick="startBulkDelete('drivers-table')">Удалить</button>
+    <button class="danger-btn" id="drivers-confirm-btn" onclick="confirmBulkDelete('drivers-table')" hidden>Подтвердить удаление</button>
+    <button id="drivers-cancel-btn" onclick="cancelBulkDelete('drivers-table')" hidden>Отмена</button>
   </div>
 
   <div id="add-driver-panel" class="browse-panel" hidden>

@@ -158,6 +158,7 @@ function renderScan(data) {
   document.getElementById('components-section').hidden = false;
   document.getElementById('opencore-section').hidden = false;
   document.getElementById('drivers-section').hidden = false;
+  resetBulkDeleteUi();
 
   const tbody = document.querySelector('#components-table tbody');
   tbody.innerHTML = '';
@@ -166,17 +167,13 @@ function renderScan(data) {
     const sourceBadge = sourceBadgeHtml(c.source);
     for (const k of c.kexts) {
       const tr = document.createElement('tr');
-      tr.appendChild(kextCheckboxCell(k));
-      tr.innerHTML += `
-        <td>${c.name}<br><span class="hint">${k.bundle}</span></td>
+      tr.innerHTML = `
+        <td><input type="checkbox" class="row-select" data-value="${k.bundle}"></td>
+        <td>${c.name}<br><span class="hint">${k.bundle}</span>
+          <button class="link-btn" onclick="updateComponent('${c.name}')">обновить</button></td>
         <td>${k.local_version || (k.present ? '?' : '—')}</td>
         <td>${latest} ${sourceBadge}</td>
-        <td>${kextStatusCell(k)}</td>
-        <td>
-          <button onclick="updateComponent('${c.name}')">обновить</button>
-          <button class="remove-btn" onclick="removeKextFromConfig('${k.bundle}')"
-              ${k.wired ? '' : 'disabled'}>убрать из конфига</button>
-        </td>`;
+        <td>${kextStatusActionHtml(k)}</td>`;
       tbody.appendChild(tr);
     }
   }
@@ -210,61 +207,120 @@ function renderScan(data) {
   dtbody.innerHTML = '';
   for (const d of data.drivers) {
     const tr = document.createElement('tr');
-    tr.appendChild(driverCheckboxCell(d));
-    tr.innerHTML += `
+    tr.innerHTML = `
+      <td><input type="checkbox" class="row-select" data-value="${d.file}"></td>
       <td>${d.file}</td>
       <td>${d.last_known_version || '—'}</td>
       <td>${d.changed_since_last_update ? 'да' : 'нет'}</td>
-      <td>${driverStatusCell(d)}</td>
-      <td><button class="remove-btn" onclick="removeDriverFromConfig('${d.file}')"
-            ${d.wired ? '' : 'disabled'}>убрать из конфига</button></td>`;
+      <td>${driverStatusActionHtml(d)}</td>`;
     dtbody.appendChild(tr);
   }
 }
 
-function kextCheckboxCell(k) {
-  const td = document.createElement('td');
+function kextStatusActionHtml(k) {
   if (!k.wired) {
-    const btn = document.createElement('button');
-    btn.className = 'wire-btn';
-    btn.textContent = '+';
-    btn.title = 'Подключить в Kernel->Add';
-    btn.disabled = !k.present;
-    btn.onclick = () => wireKextToConfig(k.bundle);
-    td.appendChild(btn);
-    return td;
+    return `<button class="wire-btn" title="Подключить в Kernel->Add" ${k.present ? '' : 'disabled'}
+        onclick="wireKextToConfig('${k.bundle}')">+</button> <span class="enabled-no">не подключён</span>`;
   }
-  const cb = document.createElement('input');
-  cb.type = 'checkbox';
-  cb.checked = !!k.enabled;
-  cb.onchange = () => toggleKext(k.bundle, cb.checked);
-  td.appendChild(cb);
-  return td;
+  if (!k.present) {
+    return `<input type="checkbox" checked disabled> <span class="enabled-missing">подключён, но файла нет!</span>`;
+  }
+  return `<input type="checkbox" ${k.enabled ? 'checked' : ''} onchange="toggleKext('${k.bundle}', this.checked)"> ` +
+    (k.enabled ? '<span class="enabled-yes">включён</span>' : '<span class="enabled-no">выключен</span>');
 }
 
-function driverCheckboxCell(d) {
-  const td = document.createElement('td');
+function driverStatusActionHtml(d) {
   if (!d.wired) {
-    const btn = document.createElement('button');
-    btn.className = 'wire-btn';
-    btn.textContent = '+';
-    btn.title = 'Подключить в UEFI->Drivers';
-    btn.onclick = () => wireDriverToConfig(d.file);
-    td.appendChild(btn);
-    return td;
+    return `<button class="wire-btn" title="Подключить в UEFI->Drivers"
+        onclick="wireDriverToConfig('${d.file}')">+</button> <span class="enabled-no">не подключён</span>`;
   }
-  const cb = document.createElement('input');
-  cb.type = 'checkbox';
-  cb.checked = !!d.enabled;
-  cb.onchange = () => toggleDriver(d.file, cb.checked);
-  td.appendChild(cb);
-  return td;
+  return `<input type="checkbox" ${d.enabled ? 'checked' : ''} onchange="toggleDriver('${d.file}', this.checked)"> ` +
+    (d.enabled ? '<span class="enabled-yes">включён</span>' : '<span class="enabled-no">выключен</span>');
 }
 
-function driverStatusCell(d) {
-  if (!d.wired) return '<span class="enabled-no">не подключён</span>';
-  return d.enabled ? '<span class="enabled-yes">включён</span>' : '<span class="enabled-no">выключен</span>';
+// ------------------------------------------------------- bulk select/delete
+//
+// First column of both tables is a plain row-selection checkbox (separate
+// from the on/off toggle, which lives in the Статус column at the far end
+// - per direct request). "Удалить" arms a "Подтвердить удаление"/"Отмена"
+// pair instead of removing anything immediately; only the confirm click
+// actually calls the API. Both tables share this logic, keyed by table id.
+
+const BULK_CONFIG = {
+  'components-table': {
+    endpoint: '/api/kext/remove-from-config-bulk',
+    bodyKey: 'bundles',
+    noun: 'кекст(ов)',
+    where: 'Kernel->Add', dir: 'Kexts',
+  },
+  'drivers-table': {
+    endpoint: '/api/driver/remove-from-config-bulk',
+    bodyKey: 'files',
+    noun: 'драйвер(ов)',
+    where: 'UEFI->Drivers', dir: 'Drivers',
+  },
+};
+
+function tablePrefix(tableId) {
+  return tableId.replace('-table', '');
 }
+
+function rowCheckboxes(tableId) {
+  return Array.from(document.querySelectorAll(`#${tableId} tbody .row-select`));
+}
+
+function selectAllRows(tableId) {
+  const boxes = rowCheckboxes(tableId);
+  const allChecked = boxes.length > 0 && boxes.every(cb => cb.checked);
+  boxes.forEach(cb => { cb.checked = !allChecked; });
+}
+
+function resetBulkDeleteUi() {
+  for (const tableId of Object.keys(BULK_CONFIG)) {
+    cancelBulkDelete(tableId);
+  }
+}
+
+function startBulkDelete(tableId) {
+  const boxes = rowCheckboxes(tableId).filter(cb => cb.checked);
+  if (!boxes.length) { log('Сначала отметьте хотя бы одну строку чекбоксом.'); return; }
+  const prefix = tablePrefix(tableId);
+  document.getElementById(`${prefix}-delete-btn`).hidden = true;
+  document.getElementById(`${prefix}-confirm-btn`).hidden = false;
+  document.getElementById(`${prefix}-cancel-btn`).hidden = false;
+}
+
+function cancelBulkDelete(tableId) {
+  const prefix = tablePrefix(tableId);
+  const del = document.getElementById(`${prefix}-delete-btn`);
+  const conf = document.getElementById(`${prefix}-confirm-btn`);
+  const cancel = document.getElementById(`${prefix}-cancel-btn`);
+  if (del) del.hidden = false;
+  if (conf) conf.hidden = true;
+  if (cancel) cancel.hidden = true;
+}
+
+async function confirmBulkDelete(tableId) {
+  const cfg = BULK_CONFIG[tableId];
+  const boxes = rowCheckboxes(tableId).filter(cb => cb.checked);
+  cancelBulkDelete(tableId);
+  if (!boxes.length) return;
+  const values = boxes.map(cb => cb.dataset.value);
+  try {
+    const res = await api(cfg.endpoint, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ root: root(), [cfg.bodyKey]: values }),
+    });
+    log(`Убрано из ${cfg.where}: ${res.removed.join(', ') || '(ничего)'} ` +
+        `(сами файлы остались в ${cfg.dir}/)` +
+        (res.skipped.length ? `; уже не были подключены: ${res.skipped.join(', ')}` : ''));
+  } catch (e) {
+    log(`Удалить ${cfg.noun}: ` + e.message);
+  }
+  scanRoot();
+}
+
+// ------------------------------------------------------------------ drivers
 
 async function toggleDriver(file, enabled) {
   try {
@@ -286,20 +342,6 @@ async function wireDriverToConfig(file) {
       body: JSON.stringify({ root: root(), file }),
     });
     log(`${file}: добавлен в UEFI->Drivers`);
-  } catch (e) {
-    log(`${file}: ошибка - ${e.message}`);
-  }
-  scanRoot();
-}
-
-async function removeDriverFromConfig(file) {
-  if (!confirm(`Убрать ${file} из UEFI->Drivers? Сам файл останется в Drivers/, просто перестанет грузиться.`)) return;
-  try {
-    await api('/api/driver/remove-from-config', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ root: root(), file }),
-    });
-    log(`${file}: убран из UEFI->Drivers`);
   } catch (e) {
     log(`${file}: ошибка - ${e.message}`);
   }
@@ -340,11 +382,7 @@ function sourceBadgeHtml(source) {
   return '';
 }
 
-function kextStatusCell(k) {
-  if (!k.wired) return '<span class="enabled-no">не подключён</span>';
-  if (!k.present) return '<span class="enabled-missing">подключён, но файла нет!</span>';
-  return k.enabled ? '<span class="enabled-yes">включён</span>' : '<span class="enabled-no">выключен</span>';
-}
+// -------------------------------------------------------------------- kexts
 
 async function toggleKext(bundle, enabled) {
   try {
@@ -372,41 +410,162 @@ async function wireKextToConfig(bundle) {
   scanRoot();
 }
 
-async function removeKextFromConfig(bundle) {
-  if (!confirm(`Убрать ${bundle} из Kernel->Add? Сам файл кекста останется в Kexts/, просто перестанет грузиться.`)) return;
-  try {
-    await api('/api/kext/remove-from-config', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ root: root(), bundle }),
-    });
-    log(`${bundle}: убран из Kernel->Add`);
-  } catch (e) {
-    log(`${bundle}: ошибка - ${e.message}`);
-  }
-  scanRoot();
-}
+// ---------------------------------------------------------- "+ Добавить"
+//
+// Three tabs: type an owner/repo by hand, pick from the OpCore-Simplify
+// kext catalog, or import a .kext already sitting somewhere on disk. The
+// old standalone "Название" field is gone - a component's display name is
+// always derived from its repo (server-side, see core.add_component()).
 
 function openAddComponent() {
   document.getElementById('add-component-panel').hidden = false;
+  showAddTab('manual');
 }
 function closeAddComponent() {
   document.getElementById('add-component-panel').hidden = true;
 }
+
+function showAddTab(tab) {
+  for (const t of ['manual', 'catalog', 'local']) {
+    document.getElementById(`add-tab-${t}`).hidden = (t !== tab);
+  }
+  document.querySelectorAll('#add-component-panel .tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tab);
+  });
+  if (tab === 'catalog' && !kextCatalogCache) {
+    loadKextCatalog();
+  }
+}
+
 async function submitAddComponent() {
-  const name = document.getElementById('add-comp-name').value.trim();
   const repo = document.getElementById('add-comp-repo').value.trim();
   const kexts = document.getElementById('add-comp-kexts').value.split(',').map(s => s.trim()).filter(Boolean);
-  if (!name || !repo || !kexts.length) { log('Заполните название, репозиторий и хотя бы один .kext.'); return; }
+  if (!repo || !kexts.length) { log('Заполните репозиторий и хотя бы один .kext.'); return; }
   try {
     await api('/api/components/add', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, repo, kexts }),
+      body: JSON.stringify({ repo, kexts }),
     });
-    log(`Добавлен компонент ${name} (${repo}).`);
+    log(`Добавлен компонент из ${repo}.`);
     closeAddComponent();
     scanRoot();
   } catch (e) {
     log('Добавить компонент: ' + e.message);
+  }
+}
+
+// --- каталог (OpCore-Simplify) ---
+
+let kextCatalogCache = null;
+
+async function loadKextCatalog() {
+  try {
+    kextCatalogCache = await api('/api/kext-catalog');
+    renderCatalogTable();
+  } catch (e) {
+    log('Каталог кекстов: ' + e.message);
+  }
+}
+
+function renderCatalogTable() {
+  const tbody = document.querySelector('#catalog-table tbody');
+  tbody.innerHTML = '';
+  if (!kextCatalogCache) return;
+  const filter = (document.getElementById('catalog-filter').value || '').trim().toLowerCase();
+  for (const entry of kextCatalogCache) {
+    const hay = `${entry.name} ${entry.category} ${entry.description}`.toLowerCase();
+    if (filter && !hay.includes(filter)) continue;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="checkbox" class="catalog-select" data-value="${entry.name}"></td>
+      <td>${entry.name}</td>
+      <td>${entry.category}</td>
+      <td>${entry.description}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+async function submitAddFromCatalog() {
+  const boxes = Array.from(document.querySelectorAll('#catalog-table .catalog-select')).filter(cb => cb.checked);
+  if (!boxes.length) { log('Отметьте хотя бы один кекст в каталоге.'); return; }
+  const names = boxes.map(cb => cb.dataset.value);
+  try {
+    const res = await api('/api/kext/add-from-catalog', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ names }),
+    });
+    log(`Добавлено из каталога: ${res.added.join(', ') || '(уже были отслеживаемы)'}`);
+    closeAddComponent();
+    scanRoot();
+  } catch (e) {
+    log('Добавить из каталога: ' + e.message);
+  }
+}
+
+// --- с диска (файл, скачанный/собранный не через OCUT) ---
+
+let localKextFolder = null;
+
+async function pickLocalKextFolder() {
+  try {
+    const res = await api('/api/pick-folder', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: 'Выберите папку, где лежит .kext' }),
+    });
+    if (res.path) {
+      localKextFolder = res.path;
+      document.getElementById('local-kext-folder-hint').textContent = res.path;
+      await refreshLocalKextList();
+    } else if (res.cancelled) {
+      // user hit Cancel - nothing to do
+    } else if (res.unavailable) {
+      log('Нативный диалог недоступен (не macOS?) - на этой платформе выбор папки для импорта кекста с диска не поддержан.');
+    }
+  } catch (e) {
+    log('Выбор папки с кекстом: ' + e.message);
+  }
+}
+
+async function refreshLocalKextList() {
+  const list = document.getElementById('local-kext-list');
+  list.innerHTML = '';
+  if (!localKextFolder) return;
+  try {
+    const res = await api('/api/kext/list-in-folder', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder: localKextFolder }),
+    });
+    if (!res.kexts.length) {
+      const li = document.createElement('li');
+      li.textContent = '.kext не найден в этой папке.';
+      list.appendChild(li);
+      return;
+    }
+    for (const bundle of res.kexts) {
+      const li = document.createElement('li');
+      li.textContent = bundle + ' ';
+      const btn = document.createElement('button');
+      btn.textContent = 'Импортировать';
+      btn.onclick = () => importLocalKext(bundle);
+      li.appendChild(btn);
+      list.appendChild(li);
+    }
+  } catch (e) {
+    log('Список кекстов в папке: ' + e.message);
+  }
+}
+
+async function importLocalKext(bundle) {
+  try {
+    await api('/api/kext/import-from-folder', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ root: root(), folder: localKextFolder, bundle }),
+    });
+    log(`${bundle}: скопирован в Kexts/. Подключите его в конфиг кнопкой "+" в таблице.`);
+    closeAddComponent();
+    scanRoot();
+  } catch (e) {
+    log(`${bundle}: ошибка импорта - ${e.message}`);
   }
 }
 

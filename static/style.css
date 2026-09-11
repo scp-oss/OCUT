@@ -30,12 +30,27 @@ input, select, button { font-size: 0.9rem; padding: 0.3rem 0.5rem; }
 
 .plus-minus { font-weight: 600; }
 .list-actions { margin-top: 0.4rem; }
-td.enabled-yes { color: #15803d; }
-td.enabled-no { color: #b45309; }
-td.enabled-missing { color: #b91c1c; }
+/* Was "td.enabled-yes" etc (a compound selector requiring the class on the
+   <td> itself) but every caller only ever puts this class on a <span>
+   nested inside the td - the compound selector never matched, and the
+   color never actually applied. Plain class selectors fix that. */
+.enabled-yes { color: #15803d; }
+.enabled-no { color: #b45309; }
+.enabled-missing { color: #b91c1c; }
 .remove-btn { color: #b91c1c; background: none; border: 1px solid #b91c1c; border-radius: 4px; padding: 0.1rem 0.5rem; }
 .wire-btn { color: #1d4ed8; background: none; border: 1px solid #1d4ed8; border-radius: 4px; padding: 0.1rem 0.5rem; }
+.link-btn { color: #1d4ed8; background: none; border: none; padding: 0; font-size: 0.8rem; text-decoration: underline; cursor: pointer; }
+.danger-btn { color: #fff; background: #b91c1c; border: 1px solid #b91c1c; border-radius: 4px; }
+th:first-child, td:first-child { width: 1.5rem; text-align: center; }
 
 .badge { display: inline-block; font-size: 0.7rem; padding: 0.05rem 0.4rem; border-radius: 999px; font-weight: 600; }
 .badge-dortania { background: #ede9fe; color: #5b21b6; }
 .badge-github { background: #e5e7eb; color: #374151; }
+
+.add-tabs { margin-bottom: 0.5rem; }
+.tab-btn { background: #eee; border: 1px solid #ccc; border-radius: 4px 4px 0 0; }
+.tab-btn.active { background: #fff; border-bottom: 1px solid #fff; font-weight: 600; }
+.add-tab { border-top: 1px solid #ccc; padding-top: 0.5rem; }
+#catalog-table-wrap { max-height: 320px; overflow: auto; border: 1px solid #ddd; border-radius: 4px; }
+#catalog-table { margin: 0; }
+#catalog-table thead th { position: sticky; top: 0; background: #f4f4f4; }

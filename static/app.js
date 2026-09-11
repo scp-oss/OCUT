@@ -113,33 +113,39 @@ function renderScan(data) {
   const tbody = document.querySelector('#components-table tbody');
   tbody.innerHTML = '';
   for (const c of data.components) {
-    const localVersions = c.kexts.map(k => `${k.bundle}: ${k.local_version || '—'}`).join('<br>');
     const latest = c.latest_version || (c.error ? 'ошибка' : '?');
-    let statusClass = 'status-unknown', statusText = '?';
-    if (c.error) { statusClass = 'status-unknown'; statusText = c.error; }
-    else if ('outdated' in c) { statusClass = c.outdated ? 'status-outdated' : 'status-ok';
-      statusText = c.outdated ? 'обновление есть' : 'актуально'; }
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td><input type="checkbox" class="comp-check" value="${c.name}"></td>
-      <td>${c.name}</td>
-      <td>${localVersions}</td>
-      <td>${latest}</td>
-      <td class="${statusClass}">${statusText}</td>
-      <td><a href="${c.release_url || '#'}" target="_blank">${c.release_url ? 'релиз' : ''}</a></td>`;
-    tbody.appendChild(tr);
+    for (const k of c.kexts) {
+      const tr = document.createElement('tr');
+      tr.appendChild(kextCheckboxCell(k));
+      tr.innerHTML += `
+        <td>${c.name}<br><span class="hint">${k.bundle}</span></td>
+        <td>${k.local_version || (k.present ? '?' : '—')}</td>
+        <td>${latest}</td>
+        <td>${kextStatusCell(k)}</td>
+        <td>
+          <button onclick="updateComponent('${c.name}')">обновить</button>
+          <button class="remove-btn" onclick="removeKextFromConfig('${k.bundle}')"
+              ${k.wired ? '' : 'disabled'}>убрать из конфига</button>
+        </td>`;
+      tbody.appendChild(tr);
+    }
   }
 
   const oc = data.opencore;
+  document.getElementById('oc-channel-label').textContent = channel();
+  document.getElementById('oc-current-version').textContent =
+    oc.last_known_version || (oc.present ? '?' : 'нет файла');
+  document.getElementById('oc-latest-version').textContent = oc.latest_version || (oc.error ? 'ошибка' : '?');
+
   const ocInfo = document.getElementById('opencore-info');
   if (!oc.present) {
     ocInfo.textContent = 'OpenCore.efi не найден по этому пути.';
   } else {
     const lines = [
-      `Последняя версия, применённая этим инструментом: ${oc.last_known_version || 'неизвестно (ещё не обновляли через этот инструмент)'}`,
-      oc.changed_since_last_update === false ? 'Файл не менялся с тех пор.' :
-        (oc.last_known_version ? 'Файл изменился с последнего known-апдейта (обновили чем-то другим или вручную).' : ''),
-      oc.latest_version ? `Актуальная версия (${channel()}): ${oc.latest_version}` : (oc.error || ''),
+      oc.last_known_version ? null : 'Версия ещё не отслеживалась этим инструментом (обновите хотя бы раз, чтобы начать трекинг).',
+      oc.last_known_version && oc.changed_since_last_update ?
+        'Файл изменился с последнего known-апдейта (обновили чем-то другим или вручную).' : null,
+      oc.error || null,
     ].filter(Boolean);
     ocInfo.innerHTML = lines.join('<br>');
   }
@@ -154,22 +160,117 @@ function renderScan(data) {
   }
 }
 
-async function updateSelectedKexts() {
-  const checked = [...document.querySelectorAll('.comp-check:checked')].map(c => c.value);
-  if (!checked.length) { log('Ничего не выбрано.'); return; }
-  for (const name of checked) {
-    log(`Обновляю ${name}...`);
-    try {
-      const res = await api('/api/update-kext', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ component: name, root: root(), channel: channel() }),
-      });
-      res.log.forEach(log);
-    } catch (e) {
-      log(`[${name}] ошибка: ${e.message}`);
-    }
+function kextCheckboxCell(k) {
+  const td = document.createElement('td');
+  if (!k.wired) {
+    const btn = document.createElement('button');
+    btn.className = 'wire-btn';
+    btn.textContent = '+';
+    btn.title = 'Подключить в Kernel->Add';
+    btn.disabled = !k.present;
+    btn.onclick = () => wireKextToConfig(k.bundle);
+    td.appendChild(btn);
+    return td;
+  }
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = !!k.enabled;
+  cb.onchange = () => toggleKext(k.bundle, cb.checked);
+  td.appendChild(cb);
+  return td;
+}
+
+function kextStatusCell(k) {
+  if (!k.wired) return '<span class="enabled-no">не подключён</span>';
+  if (!k.present) return '<span class="enabled-missing">подключён, но файла нет!</span>';
+  return k.enabled ? '<span class="enabled-yes">включён</span>' : '<span class="enabled-no">выключен</span>';
+}
+
+async function toggleKext(bundle, enabled) {
+  try {
+    await api('/api/kext/toggle', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ root: root(), bundle, enabled }),
+    });
+    log(`${bundle}: ${enabled ? 'включён' : 'выключен'}`);
+  } catch (e) {
+    log(`${bundle}: ошибка - ${e.message}`);
   }
   scanRoot();
+}
+
+async function wireKextToConfig(bundle) {
+  try {
+    await api('/api/kext/add-to-config', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ root: root(), bundle }),
+    });
+    log(`${bundle}: добавлен в Kernel->Add`);
+  } catch (e) {
+    log(`${bundle}: ошибка - ${e.message}`);
+  }
+  scanRoot();
+}
+
+async function removeKextFromConfig(bundle) {
+  if (!confirm(`Убрать ${bundle} из Kernel->Add? Сам файл кекста останется в Kexts/, просто перестанет грузиться.`)) return;
+  try {
+    await api('/api/kext/remove-from-config', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ root: root(), bundle }),
+    });
+    log(`${bundle}: убран из Kernel->Add`);
+  } catch (e) {
+    log(`${bundle}: ошибка - ${e.message}`);
+  }
+  scanRoot();
+}
+
+function openAddComponent() {
+  document.getElementById('add-component-panel').hidden = false;
+}
+function closeAddComponent() {
+  document.getElementById('add-component-panel').hidden = true;
+}
+async function submitAddComponent() {
+  const name = document.getElementById('add-comp-name').value.trim();
+  const repo = document.getElementById('add-comp-repo').value.trim();
+  const kexts = document.getElementById('add-comp-kexts').value.split(',').map(s => s.trim()).filter(Boolean);
+  if (!name || !repo || !kexts.length) { log('Заполните название, репозиторий и хотя бы один .kext.'); return; }
+  try {
+    await api('/api/components/add', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, repo, kexts }),
+    });
+    log(`Добавлен компонент ${name} (${repo}).`);
+    closeAddComponent();
+    scanRoot();
+  } catch (e) {
+    log('Добавить компонент: ' + e.message);
+  }
+}
+
+async function updateComponent(name) {
+  log(`Обновляю ${name}...`);
+  try {
+    const res = await api('/api/update-kext', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ component: name, root: root(), channel: channel() }),
+    });
+    res.log.forEach(log);
+  } catch (e) {
+    log(`[${name}] ошибка: ${e.message}`);
+  }
+  scanRoot();
+}
+
+async function updateAllComponents() {
+  if (!lastScan) { log('Сначала сканируйте.'); return; }
+  const names = lastScan.components.map(c => c.name);
+  if (!confirm(`Обновить все отслеживаемые кексты (${names.length})?`)) return;
+  for (const name of names) {
+    await updateComponent(name);
+  }
 }
 
 async function updateOpenCore() {

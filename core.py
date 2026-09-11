@@ -20,8 +20,9 @@ import zipfile
 API_ROOT = "https://api.github.com/repos"
 UA = "Mozilla/5.0 (compatible; OCUT/1.0)"
 STATE_FILENAME = ".efi_updater_state.json"
+COMPONENTS_FILENAME = os.path.join(os.path.dirname(os.path.abspath(__file__)), "components.json")
 
-COMPONENTS = [
+DEFAULT_COMPONENTS = [
     {"name": "Lilu", "repo": "acidanthera/Lilu", "kexts": ["Lilu.kext"]},
     {"name": "WhateverGreen", "repo": "acidanthera/WhateverGreen", "kexts": ["WhateverGreen.kext"]},
     {"name": "VirtualSMC", "repo": "acidanthera/VirtualSMC",
@@ -33,6 +34,44 @@ COMPONENTS = [
     {"name": "IntelMausiEthernet", "repo": "Mieze/IntelMausiEthernet", "kexts": ["IntelMausiEthernet.kext"]},
 ]
 OPENCORE_REPO = "acidanthera/OpenCorePkg"
+
+
+def load_components():
+    """Tracked components live in components.json next to this file, not
+    hardcoded - so adding/removing one from the UI doesn't need a code
+    change. Falls back to DEFAULT_COMPONENTS (and writes it out) on first
+    run or if the file is missing/corrupt."""
+    if os.path.isfile(COMPONENTS_FILENAME):
+        try:
+            with open(COMPONENTS_FILENAME) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    save_components(DEFAULT_COMPONENTS)
+    return list(DEFAULT_COMPONENTS)
+
+
+def save_components(components):
+    with open(COMPONENTS_FILENAME, "w") as f:
+        json.dump(components, f, indent=2)
+
+
+def add_component(name, repo, kexts):
+    components = load_components()
+    if any(c["name"] == name for c in components):
+        raise RuntimeError(f"'{name}' уже отслеживается")
+    components.append({"name": name, "repo": repo, "kexts": kexts})
+    save_components(components)
+    return components
+
+
+def remove_component(name):
+    components = load_components()
+    filtered = [c for c in components if c["name"] != name]
+    if len(filtered) == len(components):
+        raise RuntimeError(f"'{name}' не найден среди отслеживаемых")
+    save_components(filtered)
+    return filtered
 
 # Per-board artifacts that must never be silently overwritten by an
 # upstream "generic" version - they're generated/curated specifically for
@@ -162,6 +201,97 @@ def save_state(root, state):
         json.dump(state, f, indent=2, sort_keys=True)
 
 
+# --------------------------------------------------------- Kernel->Add ---
+
+def _config_path(root):
+    return os.path.join(root, "config.plist")
+
+
+def _load_config(root):
+    with open(_config_path(root), "rb") as f:
+        return plistlib.load(f)
+
+
+def _save_config(root, config):
+    with open(_config_path(root), "wb") as f:
+        plistlib.dump(config, f)
+
+
+def _find_kernel_add_index(entries, bundle):
+    for i, entry in enumerate(entries):
+        if entry.get("BundlePath") == bundle:
+            return i
+    return -1
+
+
+def kext_config_status(root, bundle):
+    """{"wired": False} if there's no Kernel->Add entry for this bundle at
+    all (kext sitting in Kexts/ but never referenced - OpenCore will never
+    load it); otherwise {"wired": True, "enabled": bool}."""
+    config = _load_config(root)
+    entries = config.get("Kernel", {}).get("Add", [])
+    idx = _find_kernel_add_index(entries, bundle)
+    if idx == -1:
+        return {"wired": False, "enabled": None}
+    return {"wired": True, "enabled": bool(entries[idx].get("Enabled", False))}
+
+
+def set_kext_enabled(root, bundle, enabled):
+    config = _load_config(root)
+    entries = config.setdefault("Kernel", {}).setdefault("Add", [])
+    idx = _find_kernel_add_index(entries, bundle)
+    if idx == -1:
+        raise RuntimeError(f"{bundle} не подключён в Kernel->Add - сначала добавьте запись")
+    entries[idx]["Enabled"] = bool(enabled)
+    _save_config(root, config)
+    return {"bundle": bundle, "enabled": bool(enabled)}
+
+
+def _guess_executable_path(kexts_dir, bundle):
+    """Most kexts have a Mach-O binary at Contents/MacOS/<name-without-.kext>
+    (matches every real entry already in this repo's own config.plist);
+    a codeless/property-only kext (UTBDefault.kext, XHCI-unsupported.kext)
+    has none, and OpenCore's own convention is an empty string there."""
+    stem = bundle[:-len(".kext")] if bundle.endswith(".kext") else bundle
+    candidate = os.path.join(kexts_dir, bundle, "Contents", "MacOS", stem)
+    return f"Contents/MacOS/{stem}" if os.path.isfile(candidate) else ""
+
+
+def add_kext_to_config(root, bundle, arch="x86_64", enabled=True):
+    kexts_dir = os.path.join(root, "Kexts")
+    if not os.path.isdir(os.path.join(kexts_dir, bundle)):
+        raise RuntimeError(f"{bundle} не найден в Kexts/ - сначала скачайте/скопируйте сам кекст")
+
+    config = _load_config(root)
+    entries = config.setdefault("Kernel", {}).setdefault("Add", [])
+    if _find_kernel_add_index(entries, bundle) != -1:
+        raise RuntimeError(f"{bundle} уже есть в Kernel->Add")
+
+    entries.append({
+        "Arch": arch,
+        "BundlePath": bundle,
+        "Comment": "",
+        "Enabled": bool(enabled),
+        "ExecutablePath": _guess_executable_path(kexts_dir, bundle),
+        "MaxKernel": "",
+        "MinKernel": "",
+        "PlistPath": "Contents/Info.plist",
+    })
+    _save_config(root, config)
+    return {"bundle": bundle, "added": True}
+
+
+def remove_kext_from_config(root, bundle):
+    config = _load_config(root)
+    entries = config.get("Kernel", {}).get("Add", [])
+    idx = _find_kernel_add_index(entries, bundle)
+    if idx == -1:
+        raise RuntimeError(f"{bundle} не найден в Kernel->Add")
+    del entries[idx]
+    _save_config(root, config)
+    return {"bundle": bundle, "removed": True}
+
+
 # ------------------------------------------------------------------ scan --
 
 def scan_root(root):
@@ -173,17 +303,31 @@ def scan_root(root):
     state = load_state(root)
     kexts_dir = os.path.join(root, "Kexts")
 
+    kernel_add_status = {}
+    if os.path.isfile(_config_path(root)):
+        try:
+            entries = _load_config(root).get("Kernel", {}).get("Add", [])
+            for e in entries:
+                bp = e.get("BundlePath")
+                if bp:
+                    kernel_add_status[bp] = bool(e.get("Enabled", False))
+        except Exception:
+            pass  # malformed config.plist - report kexts as present/unwired rather than fail the whole scan
+
     components = []
     known_kexts = set()
-    for component in COMPONENTS:
+    for component in load_components():
         entry = {"name": component["name"], "repo": component["repo"], "kexts": []}
         for kext in component["kexts"]:
             known_kexts.add(kext)
             path = os.path.join(kexts_dir, kext)
+            wired = kext in kernel_add_status
             entry["kexts"].append({
                 "bundle": kext,
                 "present": os.path.isdir(path),
                 "local_version": local_kext_version(path) if os.path.isdir(path) else None,
+                "wired": wired,
+                "enabled": kernel_add_status.get(kext) if wired else None,
             })
         components.append(entry)
 
@@ -325,7 +469,7 @@ def check_updates(root, channel):
 # --------------------------------------------------------------- apply ---
 
 def apply_kext_component(component_name, root, channel, log):
-    component = next((c for c in COMPONENTS if c["name"] == component_name), None)
+    component = next((c for c in load_components() if c["name"] == component_name), None)
     if not component:
         raise RuntimeError(f"unknown component '{component_name}'")
 

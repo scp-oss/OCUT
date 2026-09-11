@@ -38,24 +38,50 @@
   </div>
 </section>
 
-<section id="components-section" hidden>
-  <h2>Кексты</h2>
-  <table id="components-table">
-    <thead><tr><th></th><th>Компонент</th><th>Локально</th><th>Актуально</th><th>Статус</th><th></th></tr></thead>
-    <tbody></tbody>
-  </table>
-  <button onclick="updateSelectedKexts()">Обновить выбранные</button>
-</section>
-
 <section id="opencore-section" hidden>
   <h2>OpenCorePkg</h2>
-  <div id="opencore-info"></div>
+  <div class="version-compare">
+    <div class="version-box">
+      <span class="version-label">Текущая</span>
+      <span id="oc-current-version" class="version-value">—</span>
+    </div>
+    <span class="version-arrow">→</span>
+    <div class="version-box">
+      <span class="version-label">Доступная (<span id="oc-channel-label">stable</span>)</span>
+      <span id="oc-latest-version" class="version-value">—</span>
+    </div>
+  </div>
+  <div id="opencore-info" class="hint"></div>
   <div class="row">
     <label><input type="checkbox" id="oc-part-efi" checked> OpenCore.efi</label>
     <label><input type="checkbox" id="oc-part-drivers" checked> Drivers/*.efi</label>
     <label><input type="checkbox" id="oc-part-resources"> Resources/ (тема, из этого же релиза)</label>
   </div>
   <button onclick="updateOpenCore()">Обновить выбранное</button>
+</section>
+
+<section id="components-section" hidden>
+  <h2>Кексты</h2>
+  <table id="components-table">
+    <thead><tr><th>Вкл</th><th>Компонент</th><th>Текущая версия</th><th>Доступная</th><th>Статус</th><th>Действия</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <div class="row list-actions">
+    <button onclick="updateAllComponents()">Обновить всё</button>
+    <button class="plus-minus" onclick="openAddComponent()">+ Добавить</button>
+  </div>
+
+  <div id="add-component-panel" class="browse-panel" hidden>
+    <div class="row">
+      <input id="add-comp-name" type="text" placeholder="Название (например AppleALC)" size="20">
+      <input id="add-comp-repo" type="text" placeholder="owner/repo (например acidanthera/AppleALC)" size="30">
+      <input id="add-comp-kexts" type="text" placeholder="файлы .kext через запятую" size="30">
+    </div>
+    <div class="row">
+      <button onclick="submitAddComponent()">Добавить</button>
+      <button onclick="closeAddComponent()">Отмена</button>
+    </div>
+  </div>
 </section>
 
 <section id="drivers-section" hidden>

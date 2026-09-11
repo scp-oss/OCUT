@@ -20,3 +20,18 @@ input, select, button { font-size: 0.9rem; padding: 0.3rem 0.5rem; }
 .browse-list li { padding: 0.35rem 0.6rem; cursor: pointer; border-bottom: 1px solid #eee; }
 .browse-list li:hover { background: #eef; }
 .browse-list li.efi-oc::after { content: " ✓ похоже на EFI/OC"; color: #15803d; font-size: 0.8rem; }
+
+.version-compare { display: flex; align-items: center; gap: 1rem; margin: 0.5rem 0; }
+.version-box { display: flex; flex-direction: column; padding: 0.5rem 1rem; border: 1px solid #ccc;
+  border-radius: 6px; background: #fafafa; min-width: 140px; }
+.version-label { font-size: 0.75rem; color: #666; text-transform: uppercase; }
+.version-value { font-size: 1.2rem; font-weight: 600; }
+.version-arrow { font-size: 1.3rem; color: #999; }
+
+.plus-minus { font-weight: 600; }
+.list-actions { margin-top: 0.4rem; }
+td.enabled-yes { color: #15803d; }
+td.enabled-no { color: #b45309; }
+td.enabled-missing { color: #b91c1c; }
+.remove-btn { color: #b91c1c; background: none; border: 1px solid #b91c1c; border-radius: 4px; padding: 0.1rem 0.5rem; }
+.wire-btn { color: #1d4ed8; background: none; border: 1px solid #1d4ed8; border-radius: 4px; padding: 0.1rem 0.5rem; }

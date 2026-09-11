@@ -80,6 +80,8 @@ class Handler(BaseHTTPRequestHandler):
                 root = qs.get("root", [""])[0]
                 channel = qs.get("channel", ["stable"])[0]
                 self._json(200, core.check_updates(root, channel))
+            elif parsed.path == "/api/components":
+                self._json(200, core.load_components())
             else:
                 self._serve_static(parsed.path)
         except Exception as e:
@@ -96,6 +98,23 @@ class Handler(BaseHTTPRequestHandler):
 
             if parsed.path == "/api/pick-folder":
                 self._json(200, core.pick_folder_native(body.get("prompt", "Choose the EFI/OC folder")))
+
+            elif parsed.path == "/api/components/add":
+                result = core.add_component(body["name"], body["repo"], body["kexts"])
+                self._json(200, {"components": result})
+
+            elif parsed.path == "/api/components/remove":
+                result = core.remove_component(body["name"])
+                self._json(200, {"components": result})
+
+            elif parsed.path == "/api/kext/toggle":
+                self._json(200, core.set_kext_enabled(body["root"], body["bundle"], body["enabled"]))
+
+            elif parsed.path == "/api/kext/add-to-config":
+                self._json(200, core.add_kext_to_config(body["root"], body["bundle"]))
+
+            elif parsed.path == "/api/kext/remove-from-config":
+                self._json(200, core.remove_kext_from_config(body["root"], body["bundle"]))
 
             elif parsed.path == "/api/update-kext":
                 result = core.apply_kext_component(body["component"], body["root"], body["channel"], log)

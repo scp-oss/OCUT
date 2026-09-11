@@ -95,12 +95,12 @@ async function scanRoot() {
 }
 
 async function checkUpdates() {
-  clearLog();
   log('Проверяю GitHub (' + channel() + ')...');
   try {
     lastScan = await api(`/api/check-updates?root=${encodeURIComponent(root())}&channel=${channel()}`);
     renderScan(lastScan);
     saveLastSettings();
+    saveLastScanCache(lastScan);
     log('Готово.');
   } catch (e) {
     log('Ошибка: ' + e.message);
@@ -108,11 +108,18 @@ async function checkUpdates() {
 }
 
 const LAST_SETTINGS_KEY = 'ocut-last-settings';
+const LAST_SCAN_KEY = 'ocut-last-scan';
 
 function saveLastSettings() {
   try {
     localStorage.setItem(LAST_SETTINGS_KEY, JSON.stringify({ root: root(), channel: channel() }));
   } catch (e) { /* private browsing / storage disabled - fine, just skip remembering */ }
+}
+
+function saveLastScanCache(data) {
+  try {
+    localStorage.setItem(LAST_SCAN_KEY, JSON.stringify(data));
+  } catch (e) { /* same as above - non-fatal if storage isn't available */ }
 }
 
 function restoreLastSettingsAndAutoCheck() {
@@ -125,7 +132,23 @@ function restoreLastSettingsAndAutoCheck() {
   if (!saved || !saved.root) return;
   document.getElementById('root').value = saved.root;
   if (saved.channel) document.getElementById('channel').value = saved.channel;
-  log(`Найден запомненный путь (${saved.root}) - проверяю обновления в фоне...`);
+
+  // Render whatever we saw last time immediately, before the network round
+  // trip - so a page refresh shows the same table right away instead of
+  // going blank while /api/check-updates is in flight (that's what "всё
+  // сбрасывается" on refresh meant: sections start `hidden` in the HTML
+  // and only appear once renderScan() runs).
+  let cached = null;
+  try {
+    cached = JSON.parse(localStorage.getItem(LAST_SCAN_KEY) || 'null');
+  } catch (e) { /* corrupt/missing cache - fall through to a plain background check */ }
+
+  if (cached) {
+    renderScan(cached);
+    log('Показаны данные с прошлого раза, обновляю в фоне...');
+  } else {
+    log(`Найден запомненный путь (${saved.root}) - проверяю обновления в фоне...`);
+  }
   checkUpdates();
 }
 

@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import plistlib
+import re
 import shutil
 import subprocess
 import tempfile
@@ -416,7 +417,22 @@ def read_live_opencore_version():
     value = result.stdout.strip()
     if "\t" in value:
         value = value.split("\t", 1)[1]
-    return value.strip() or None
+    value = value.strip()
+    return format_opencore_version(value) if value else None
+
+
+def format_opencore_version(raw):
+    """Raw NVRAM value looks like 'REL-107-2025-11-19' (build type -
+    version digits, one per component, no dots - build date). Reformat to
+    '1.0.7 (2025-11-19)' so it's directly comparable to the plain X.Y.Z
+    tags GitHub releases use for "Доступная". Falls back to the untouched
+    raw string if it doesn't match this exact observed shape - never
+    guess at a layout that hasn't actually been seen."""
+    m = re.match(r"^(?:REL|DBG|DEBUG)-(\d{2,4})-(\d{4}-\d{2}-\d{2})$", raw)
+    if not m:
+        return raw
+    digits, date = m.groups()
+    return f"{'.'.join(digits)} ({date})"
 
 
 def pick_folder_native(prompt="Choose the EFI/OC folder"):

@@ -20,7 +20,10 @@ import mimetypes
 import os
 import plistlib
 import tempfile
+import threading
+import time
 import traceback
+import webbrowser
 import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
@@ -190,9 +193,24 @@ def _plist_preview(d, max_len=20000):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8765)
+    ap.add_argument("--no-browser", action="store_true", help="don't auto-open the browser on startup")
     args = ap.parse_args()
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    print(f"EFI updater running at http://127.0.0.1:{args.port}  (Ctrl+C to stop)")
+    url = f"http://127.0.0.1:{args.port}/"
+    print(f"EFI updater running at {url}  (Ctrl+C to stop)")
+
+    if not args.no_browser:
+        # Fire after a short delay in a background thread so a slow/absent
+        # browser launch never blocks server startup - opening a tab is a
+        # nice-to-have, not something a failure here should affect.
+        def _open_browser():
+            time.sleep(0.3)
+            try:
+                webbrowser.open(url)
+            except Exception:
+                pass
+        threading.Thread(target=_open_browser, daemon=True).start()
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:

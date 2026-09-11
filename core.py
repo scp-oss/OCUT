@@ -15,6 +15,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import urllib.request
 import zipfile
 
@@ -35,6 +36,21 @@ DEFAULT_COMPONENTS = [
     {"name": "IntelMausiEthernet", "repo": "Mieze/IntelMausiEthernet", "kexts": ["IntelMausiEthernet.kext"]},
 ]
 OPENCORE_REPO = "acidanthera/OpenCorePkg"
+
+# Dortania's build-repo (https://dortania.github.io/builds/) rebuilds
+# acidanthera-ecosystem projects from upstream `master` on every commit -
+# ahead of official tagged releases, and unlike hitting api.github.com per
+# project this is a single raw file covering every tracked project at once
+# (no REST rate limit, since it's not a github.com API call). Made the
+# primary source per direct request - resolve_component_build() falls back
+# to the component's own GitHub releases only when Dortania doesn't track
+# it (confirmed absent for USBToolBox and for IntelMausiEthernet
+# specifically - Dortania tracks a differently-named "IntelMausi" project
+# built from a different upstream, acidanthera/IntelMausi rather than
+# Mieze/IntelMausiEthernet, likely producing a differently-named kext
+# bundle too, so it's deliberately NOT auto-mapped as an alias here) or
+# when fetching the manifest itself fails.
+DORTANIA_MANIFEST_URL = "https://raw.githubusercontent.com/dortania/build-repo/builds/latest.json"
 
 
 def load_components():
@@ -102,6 +118,56 @@ def resolve_release(repo, channel):
     return tag, assets, data.get("html_url", "")
 
 
+def fetch_dortania_manifest():
+    req = urllib.request.Request(DORTANIA_MANIFEST_URL, headers={"User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.load(resp)
+
+
+def dortania_lookup(manifest, project_name):
+    """None if this project isn't tracked by Dortania at all, or the
+    manifest doesn't have the expected shape for it - caller should treat
+    that exactly like "no Dortania data" and fall back to GitHub, not
+    raise. Real schema, verified against the live manifest:
+    manifest["Lilu"]["versions"][0] == {"version": "1.7.3",
+    "links": {"release": "<direct .zip url>", "debug": "..."},
+    "hashes": {"release": {"sha256": "..."}, ...},
+    "release": {"url": "<build-repo release page>", "id": ...}, ...}."""
+    entry = manifest.get(project_name)
+    if not entry or not entry.get("versions"):
+        return None
+    latest = entry["versions"][0]
+    try:
+        return {
+            "version": latest["version"],
+            "url": latest["links"]["release"],
+            "sha256": latest["hashes"]["release"]["sha256"],
+            "html_url": latest["release"]["url"],
+        }
+    except KeyError:
+        return None
+
+
+def resolve_component_build(component, channel, manifest):
+    """Single entry point used by both check_updates() and the actual
+    apply_*() functions, so "what version/URL did we check" and "what did
+    we download" can never silently disagree. Tries Dortania first
+    (manifest may be None if fetching it failed - that's a normal,
+    already-logged fallback trigger, not an error to raise here), then the
+    component's own GitHub releases on the given channel."""
+    dortania_name = component.get("dortania_name", component["name"])
+    if manifest is not None:
+        hit = dortania_lookup(manifest, dortania_name)
+        if hit:
+            return {
+                "version": hit["version"], "asset_url": hit["url"], "sha256": hit["sha256"],
+                "source": "dortania", "html_url": hit["html_url"],
+            }
+    tag, assets, url = resolve_release(component["repo"], channel)
+    asset_name, asset_url = pick_asset(assets)
+    return {"version": tag, "asset_url": asset_url, "sha256": None, "source": "github", "html_url": url}
+
+
 def pick_asset(assets):
     release_named = [a for a in assets if "release" in a[0].lower() and a[0].lower().endswith(".zip")]
     if release_named:
@@ -130,6 +196,55 @@ def download_repo_archive(repo, dest_zip, ref=None):
     ref = ref or repo_default_branch(repo)
     url = f"https://api.github.com/repos/{repo}/zipball/{ref}"
     download(url, dest_zip)
+
+
+# ----------------------------------------------------------- backups ----
+
+def _version_slug(version):
+    return re.sub(r"[^A-Za-z0-9.]+", "_", version) if version else "unknown"
+
+
+def backup_oc_folder_zip(root):
+    """One full zip snapshot of the whole OC folder, taken right before
+    ANY update button's action runs - stored as a SIBLING of the OC folder
+    (not inside it, so it never gets swept up as "just another file in
+    Kexts/" by a future scan, and doesn't grow the folder OpenCore itself
+    boots from). Restoring is just unzipping it back over the parent
+    directory - the zip's internal paths already start with the OC
+    folder's own name.
+
+    Filename: oc-<version>-<date>-<n>.zip - version is whatever OpenCore
+    reports as currently running (NVRAM, see read_live_opencore_version())
+    since that's the most meaningful single label for a snapshot of the
+    ENTIRE folder, falling back to the last version OCUT itself applied,
+    then "unknown" - <n> avoids collisions if this fires more than once
+    the same day (e.g. updating several kexts back to back).
+    """
+    root = os.path.abspath(root)
+    parent_dir = os.path.dirname(root)
+    oc_dirname = os.path.basename(root)
+
+    state = load_state(root)
+    version = read_live_opencore_version() or state.get("opencore", {}).get("version") or "unknown"
+    date = time.strftime("%Y%m%d")
+
+    n = 1
+    while True:
+        dest = os.path.join(parent_dir, f"oc-{_version_slug(version)}-{date}-{n}.zip")
+        if not os.path.exists(dest):
+            break
+        n += 1
+
+    with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as z:
+        for dirpath, _, filenames in os.walk(root):
+            for fname in filenames:
+                if is_junk_metadata_name(fname):
+                    continue
+                full = os.path.join(dirpath, fname)
+                arcname = os.path.join(oc_dirname, os.path.relpath(full, root))
+                z.write(full, arcname)
+
+    return dest
 
 
 # --------------------------------------------------------- filesystem ----
@@ -497,21 +612,34 @@ def browse_dir(path):
 
 
 def check_updates(root, channel):
-    """Network calls: hits GitHub once per component + once for OpenCorePkg.
-    Returns scan_root()'s data plus a 'latest' field per component/opencore."""
+    """One Dortania manifest fetch (covers every component at once) plus a
+    per-component GitHub fallback call only where needed. Returns
+    scan_root()'s data plus 'latest_version'/'source' per component/opencore."""
     data = scan_root(root)
+
+    manifest = None
+    try:
+        manifest = fetch_dortania_manifest()
+    except Exception as e:
+        data["dortania_error"] = str(e)  # surfaced once - per-component GitHub fallback still runs below regardless
+
+    components_by_name = {c["name"]: c for c in load_components()}
     for entry in data["components"]:
         try:
-            tag, assets, url = resolve_release(entry["repo"], channel)
-            entry["latest_version"] = tag
-            entry["release_url"] = url
-            entry["outdated"] = any(k["local_version"] != tag for k in entry["kexts"])
+            component = components_by_name[entry["name"]]
+            build = resolve_component_build(component, channel, manifest)
+            entry["latest_version"] = build["version"]
+            entry["release_url"] = build["html_url"]
+            entry["source"] = build["source"]
+            entry["outdated"] = any(k["local_version"] != build["version"] for k in entry["kexts"])
         except Exception as e:
             entry["error"] = str(e)
+
     try:
-        tag, assets, url = resolve_release(OPENCORE_REPO, channel)
-        data["opencore"]["latest_version"] = tag
-        data["opencore"]["release_url"] = url
+        build = resolve_component_build({"name": "OpenCorePkg", "repo": OPENCORE_REPO}, channel, manifest)
+        data["opencore"]["latest_version"] = build["version"]
+        data["opencore"]["release_url"] = build["html_url"]
+        data["opencore"]["source"] = build["source"]
     except Exception as e:
         data["opencore"]["error"] = str(e)
     return data
@@ -524,14 +652,28 @@ def apply_kext_component(component_name, root, channel, log):
     if not component:
         raise RuntimeError(f"unknown component '{component_name}'")
 
-    tag, assets, _ = resolve_release(component["repo"], channel)
-    asset_name, asset_url = pick_asset(assets)
-    log.append(f"[{component_name}] using {asset_name} ({channel}) -> {tag}")
+    backup_path = backup_oc_folder_zip(root)
+    log.append(f"[{component_name}] backup -> {backup_path}")
+
+    manifest = None
+    try:
+        manifest = fetch_dortania_manifest()
+    except Exception as e:
+        log.append(f"[{component_name}] Dortania manifest unavailable ({e}), falling back to GitHub releases")
+
+    build = resolve_component_build(component, channel, manifest)
+    asset_name = os.path.basename(build["asset_url"])
+    log.append(f"[{component_name}] source={build['source']} {asset_name} -> {build['version']}")
 
     kexts_dir = os.path.join(root, "Kexts")
     with tempfile.TemporaryDirectory() as tmp:
         zip_path = os.path.join(tmp, asset_name)
-        download(asset_url, zip_path)
+        download(build["asset_url"], zip_path)
+        if build["sha256"]:
+            actual = sha256_of(zip_path)
+            if actual != build["sha256"]:
+                raise RuntimeError(f"sha256 mismatch for {asset_name}: expected {build['sha256']}, got {actual}")
+            log.append(f"[{component_name}] sha256 verified against Dortania manifest")
         extract_dir = os.path.join(tmp, "extracted")
         with zipfile.ZipFile(zip_path) as z:
             z.extractall(extract_dir)
@@ -546,23 +688,39 @@ def apply_kext_component(component_name, root, channel, log):
             if os.path.isdir(dst):
                 shutil.rmtree(dst)
             shutil.copytree(src, dst)
-            log.append(f"[{component_name}] {kext} -> {tag}")
+            log.append(f"[{component_name}] {kext} -> {build['version']}")
             applied.append(kext)
-    return {"component": component_name, "version": tag, "channel": channel, "applied_kexts": applied}
+    return {"component": component_name, "version": build["version"], "channel": channel,
+            "source": build["source"], "applied_kexts": applied, "backup": backup_path}
 
 
 def apply_opencore(root, channel, parts, log):
     """parts: subset of {'efi', 'drivers', 'resources'}."""
-    tag, assets, _ = resolve_release(OPENCORE_REPO, channel)
-    asset_name, asset_url = pick_asset(assets)
-    log.append(f"[OpenCorePkg] using {asset_name} ({channel}) -> {tag}")
+    backup_path = backup_oc_folder_zip(root)
+    log.append(f"[OpenCorePkg] backup -> {backup_path}")
+
+    manifest = None
+    try:
+        manifest = fetch_dortania_manifest()
+    except Exception as e:
+        log.append(f"[OpenCorePkg] Dortania manifest unavailable ({e}), falling back to GitHub releases")
+
+    build = resolve_component_build({"name": "OpenCorePkg", "repo": OPENCORE_REPO}, channel, manifest)
+    tag = build["version"]
+    asset_name = os.path.basename(build["asset_url"])
+    log.append(f"[OpenCorePkg] source={build['source']} {asset_name} -> {tag}")
 
     state = load_state(root)
-    result = {"version": tag, "channel": channel, "applied_parts": []}
+    result = {"version": tag, "channel": channel, "source": build["source"], "applied_parts": [], "backup": backup_path}
 
     with tempfile.TemporaryDirectory() as tmp:
         zip_path = os.path.join(tmp, asset_name)
-        download(asset_url, zip_path)
+        download(build["asset_url"], zip_path)
+        if build["sha256"]:
+            actual = sha256_of(zip_path)
+            if actual != build["sha256"]:
+                raise RuntimeError(f"sha256 mismatch for {asset_name}: expected {build['sha256']}, got {actual}")
+            log.append("[OpenCorePkg] sha256 verified against Dortania manifest")
         extract_dir = os.path.join(tmp, "extracted")
         with zipfile.ZipFile(zip_path) as z:
             z.extractall(extract_dir)
@@ -618,6 +776,9 @@ def apply_opencore(root, channel, parts, log):
 def apply_theme(repo, root, log, ref=None):
     """repo: 'owner/name' of a GitHub repo whose tree contains a Resources/
     folder in the shape OpenCanopy expects (Image/Label/Font/Audio)."""
+    backup_path = backup_oc_folder_zip(root)
+    log.append(f"[theme] backup -> {backup_path}")
+
     with tempfile.TemporaryDirectory() as tmp:
         zip_path = os.path.join(tmp, "theme.zip")
         log.append(f"[theme] downloading {repo} ({ref or 'default branch'}) ...")
@@ -639,7 +800,7 @@ def apply_theme(repo, root, log, ref=None):
     state = load_state(root)
     state["resources_theme"] = {"source": repo, "ref": ref}
     save_state(root, state)
-    return {"source": repo}
+    return {"source": repo, "backup": backup_path}
 
 
 # ------------------------------------------------------- config migration --

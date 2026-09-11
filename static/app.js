@@ -163,13 +163,14 @@ function renderScan(data) {
   tbody.innerHTML = '';
   for (const c of data.components) {
     const latest = c.latest_version || (c.error ? 'ошибка' : '?');
+    const sourceBadge = sourceBadgeHtml(c.source);
     for (const k of c.kexts) {
       const tr = document.createElement('tr');
       tr.appendChild(kextCheckboxCell(k));
       tr.innerHTML += `
         <td>${c.name}<br><span class="hint">${k.bundle}</span></td>
         <td>${k.local_version || (k.present ? '?' : '—')}</td>
-        <td>${latest}</td>
+        <td>${latest} ${sourceBadge}</td>
         <td>${kextStatusCell(k)}</td>
         <td>
           <button onclick="updateComponent('${c.name}')">обновить</button>
@@ -184,13 +185,15 @@ function renderScan(data) {
   document.getElementById('oc-channel-label').textContent = channel();
   document.getElementById('oc-current-version').textContent =
     oc.live_booted_version || oc.last_known_version || (oc.present ? '?' : 'нет файла');
-  document.getElementById('oc-latest-version').textContent = oc.latest_version || (oc.error ? 'ошибка' : '?');
+  document.getElementById('oc-latest-version').innerHTML =
+    (oc.latest_version || (oc.error ? 'ошибка' : '?')) + ' ' + sourceBadgeHtml(oc.source);
 
   const ocInfo = document.getElementById('opencore-info');
   if (!oc.present) {
     ocInfo.textContent = 'OpenCore.efi не найден по этому пути.';
   } else {
     const lines = [
+      data.dortania_error ? `Dortania build-repo недоступен (${data.dortania_error}) - используется официальный GitHub-релиз как запасной вариант.` : null,
       oc.live_booted_version ?
         'Версия взята из NVRAM текущей загруженной системы - совпадает с файлом по этому пути, только если вы сейчас загружены именно с него.' :
         'NVRAM-версия недоступна (не macOS, или Misc.Security.ExposeSensitiveData без бита 0x02) - показана версия, которую последний раз применил сам OCUT.',
@@ -231,6 +234,12 @@ function kextCheckboxCell(k) {
   cb.onchange = () => toggleKext(k.bundle, cb.checked);
   td.appendChild(cb);
   return td;
+}
+
+function sourceBadgeHtml(source) {
+  if (source === 'dortania') return '<span class="badge badge-dortania" title="Dortania build-repo - continuous build from upstream master, ahead of official releases">Dortania</span>';
+  if (source === 'github') return '<span class="badge badge-github" title="официальный релиз/pre-release из GitHub">GitHub</span>';
+  return '';
 }
 
 function kextStatusCell(k) {

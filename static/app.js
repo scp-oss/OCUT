@@ -162,7 +162,7 @@ function renderScan(data) {
   const tbody = document.querySelector('#components-table tbody');
   tbody.innerHTML = '';
   for (const c of data.components) {
-    const latest = c.latest_version || (c.error ? 'ошибка' : '?');
+    const latest = versionLinkHtml(c.latest_version, c.release_url) || (c.error ? 'ошибка' : '?');
     const sourceBadge = sourceBadgeHtml(c.source);
     for (const k of c.kexts) {
       const tr = document.createElement('tr');
@@ -186,7 +186,7 @@ function renderScan(data) {
   document.getElementById('oc-current-version').textContent =
     oc.live_booted_version || oc.last_known_version || (oc.present ? '?' : 'нет файла');
   document.getElementById('oc-latest-version').innerHTML =
-    (oc.latest_version || (oc.error ? 'ошибка' : '?')) + ' ' + sourceBadgeHtml(oc.source);
+    (versionLinkHtml(oc.latest_version, oc.release_url) || (oc.error ? 'ошибка' : '?')) + ' ' + sourceBadgeHtml(oc.source);
 
   const ocInfo = document.getElementById('opencore-info');
   if (!oc.present) {
@@ -326,6 +326,12 @@ async function submitAddDriver() {
   } catch (e) {
     log(`${file}: ошибка - ${e.message}`);
   }
+}
+
+function versionLinkHtml(version, url) {
+  if (!version) return '';
+  if (!url) return version;
+  return `<a href="${url}" target="_blank" rel="noopener">${version}</a>`;
 }
 
 function sourceBadgeHtml(source) {

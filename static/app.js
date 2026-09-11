@@ -87,6 +87,7 @@ async function scanRoot() {
   try {
     lastScan = await api(`/api/scan?root=${encodeURIComponent(root())}`);
     renderScan(lastScan);
+    saveLastSettings();
     log('Скан завершён (без обращения к сети).');
   } catch (e) {
     log('Ошибка: ' + e.message);
@@ -99,11 +100,36 @@ async function checkUpdates() {
   try {
     lastScan = await api(`/api/check-updates?root=${encodeURIComponent(root())}&channel=${channel()}`);
     renderScan(lastScan);
+    saveLastSettings();
     log('Готово.');
   } catch (e) {
     log('Ошибка: ' + e.message);
   }
 }
+
+const LAST_SETTINGS_KEY = 'ocut-last-settings';
+
+function saveLastSettings() {
+  try {
+    localStorage.setItem(LAST_SETTINGS_KEY, JSON.stringify({ root: root(), channel: channel() }));
+  } catch (e) { /* private browsing / storage disabled - fine, just skip remembering */ }
+}
+
+function restoreLastSettingsAndAutoCheck() {
+  let saved;
+  try {
+    saved = JSON.parse(localStorage.getItem(LAST_SETTINGS_KEY) || 'null');
+  } catch (e) {
+    return;
+  }
+  if (!saved || !saved.root) return;
+  document.getElementById('root').value = saved.root;
+  if (saved.channel) document.getElementById('channel').value = saved.channel;
+  log(`Найден запомненный путь (${saved.root}) - проверяю обновления в фоне...`);
+  checkUpdates();
+}
+
+window.addEventListener('DOMContentLoaded', restoreLastSettingsAndAutoCheck);
 
 function renderScan(data) {
   document.getElementById('components-section').hidden = false;
@@ -134,7 +160,7 @@ function renderScan(data) {
   const oc = data.opencore;
   document.getElementById('oc-channel-label').textContent = channel();
   document.getElementById('oc-current-version').textContent =
-    oc.last_known_version || (oc.present ? '?' : 'нет файла');
+    oc.live_booted_version || oc.last_known_version || (oc.present ? '?' : 'нет файла');
   document.getElementById('oc-latest-version').textContent = oc.latest_version || (oc.error ? 'ошибка' : '?');
 
   const ocInfo = document.getElementById('opencore-info');
@@ -142,7 +168,11 @@ function renderScan(data) {
     ocInfo.textContent = 'OpenCore.efi не найден по этому пути.';
   } else {
     const lines = [
-      oc.last_known_version ? null : 'Версия ещё не отслеживалась этим инструментом (обновите хотя бы раз, чтобы начать трекинг).',
+      oc.live_booted_version ?
+        'Версия взята из NVRAM текущей загруженной системы - совпадает с файлом по этому пути, только если вы сейчас загружены именно с него.' :
+        'NVRAM-версия недоступна (не macOS, или Misc.Security.ExposeSensitiveData без бита 0x02) - показана версия, которую последний раз применил сам OCUT.',
+      oc.last_known_version ? null : (oc.live_booted_version ? null :
+        'Версия ещё не отслеживалась этим инструментом (обновите хотя бы раз, чтобы начать трекинг).'),
       oc.last_known_version && oc.changed_since_last_update ?
         'Файл изменился с последнего known-апдейта (обновили чем-то другим или вручную).' : null,
       oc.error || null,

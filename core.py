@@ -351,6 +351,7 @@ def scan_root(root):
         oc_info["last_known_version"] = recorded.get("version")
         oc_info["last_known_channel"] = recorded.get("channel")
         oc_info["changed_since_last_update"] = recorded.get("sha256") != current_hash
+        oc_info["live_booted_version"] = read_live_opencore_version()
 
     drivers_dir = os.path.join(root, "Drivers")
     drivers = []
@@ -382,6 +383,40 @@ def scan_root(root):
         "drivers": drivers,
         "resources_theme": resources_state,
     }
+
+
+OC_VENDOR_GUID = "4D1FDA02-38C7-4A6A-9CC6-4BCCA8B30102"
+
+
+def read_live_opencore_version():
+    """OpenCore itself publishes its running version as an NVRAM variable
+    when Misc.Security.ExposeSensitiveData has bit 0x02 set (see OpenCore's
+    own Configuration.pdf) - reading the binary directly doesn't work (no
+    plain version string in it, verified against a real OpenCore.efi), but
+    this does, straight from the currently booted instance.
+
+    Important caveat this can't resolve on its own: this reflects whatever
+    OpenCore is ACTUALLY booted right now, which is only the same as "the
+    OpenCore.efi at the path you're inspecting" if you're currently booted
+    from that exact EFI. Point this at a different partition's EFI (e.g.
+    a USB test copy while booted from the internal disk) and this will
+    report the disk's live version, not the USB copy's - caller/UI should
+    label it accordingly rather than presenting it as verified-for-this-path.
+    """
+    try:
+        result = subprocess.run(
+            ["nvram", f"{OC_VENDOR_GUID}:opencore-version"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except FileNotFoundError:
+        return None
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    # nvram prints "GUID:name\tvalue" - split on the first tab
+    value = result.stdout.strip()
+    if "\t" in value:
+        value = value.split("\t", 1)[1]
+    return value.strip() or None
 
 
 def pick_folder_native(prompt="Choose the EFI/OC folder"):

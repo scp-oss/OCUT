@@ -119,6 +119,19 @@ class Handler(BaseHTTPRequestHandler):
             elif parsed.path == "/api/kext/remove-from-config":
                 self._json(200, core.remove_kext_from_config(body["root"], body["bundle"]))
 
+            elif parsed.path == "/api/driver/toggle":
+                self._json(200, core.set_driver_enabled(body["root"], body["file"], body["enabled"]))
+
+            elif parsed.path == "/api/driver/add-to-config":
+                self._json(200, core.add_driver_to_config(body["root"], body["file"]))
+
+            elif parsed.path == "/api/driver/remove-from-config":
+                self._json(200, core.remove_driver_from_config(body["root"], body["file"]))
+
+            elif parsed.path == "/api/driver/fetch-from-opencore":
+                result = core.fetch_driver_from_opencore(body["root"], body["file"], body["channel"], log)
+                self._json(200, {"result": result, "log": log})
+
             elif parsed.path == "/api/update-kext":
                 result = core.apply_kext_component(body["component"], body["root"], body["channel"], log)
                 self._json(200, {"result": result, "log": log})

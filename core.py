@@ -408,6 +408,125 @@ def remove_kext_from_config(root, bundle):
     return {"bundle": bundle, "removed": True}
 
 
+# ------------------------------------------------------------ UEFI->Drivers
+
+def _find_uefi_driver_index(entries, filename):
+    for i, entry in enumerate(entries):
+        if entry.get("Path") == filename:
+            return i
+    return -1
+
+
+def driver_config_status(root, filename):
+    """Same shape as kext_config_status() - {"wired": False} if there's no
+    UEFI->Drivers entry for this file at all, otherwise {"wired": True,
+    "enabled": bool}. Real entry shape confirmed against this repo's own
+    config.plist: {"Arguments": "", "Comment": "", "Enabled": bool,
+    "LoadEarly": bool, "Path": "<file>.efi"} - matched on Path, the
+    Drivers/*.efi equivalent of a kext's BundlePath."""
+    config = _load_config(root)
+    entries = config.get("UEFI", {}).get("Drivers", [])
+    idx = _find_uefi_driver_index(entries, filename)
+    if idx == -1:
+        return {"wired": False, "enabled": None}
+    return {"wired": True, "enabled": bool(entries[idx].get("Enabled", False))}
+
+
+def set_driver_enabled(root, filename, enabled):
+    config = _load_config(root)
+    entries = config.setdefault("UEFI", {}).setdefault("Drivers", [])
+    idx = _find_uefi_driver_index(entries, filename)
+    if idx == -1:
+        raise RuntimeError(f"{filename} не подключён в UEFI->Drivers - сначала добавьте запись")
+    entries[idx]["Enabled"] = bool(enabled)
+    _save_config(root, config)
+    return {"file": filename, "enabled": bool(enabled)}
+
+
+def add_driver_to_config(root, filename, load_early=False, enabled=True):
+    drivers_dir = os.path.join(root, "Drivers")
+    if not os.path.isfile(os.path.join(drivers_dir, filename)):
+        raise RuntimeError(f"{filename} не найден в Drivers/ - сначала скачайте/скопируйте сам файл")
+
+    config = _load_config(root)
+    entries = config.setdefault("UEFI", {}).setdefault("Drivers", [])
+    if _find_uefi_driver_index(entries, filename) != -1:
+        raise RuntimeError(f"{filename} уже есть в UEFI->Drivers")
+
+    entries.append({
+        "Arguments": "",
+        "Comment": "",
+        "Enabled": bool(enabled),
+        "LoadEarly": bool(load_early),
+        "Path": filename,
+    })
+    _save_config(root, config)
+    return {"file": filename, "added": True}
+
+
+def remove_driver_from_config(root, filename):
+    config = _load_config(root)
+    entries = config.get("UEFI", {}).get("Drivers", [])
+    idx = _find_uefi_driver_index(entries, filename)
+    if idx == -1:
+        raise RuntimeError(f"{filename} не найден в UEFI->Drivers")
+    del entries[idx]
+    _save_config(root, config)
+    return {"file": filename, "removed": True}
+
+
+def fetch_driver_from_opencore(root, filename, channel, log):
+    """Pull just ONE driver file out of the current OpenCorePkg build's
+    Drivers/ folder - for adding a stock driver (e.g. OpenHfsPlus.efi)
+    that isn't installed yet, without touching OpenCore.efi or any other
+    driver already present. Same backup-first + Dortania-first + sha256
+    verification path as apply_opencore(), just narrowed to one file
+    afterwards."""
+    backup_path = backup_oc_folder_zip(root)
+    log.append(f"[Drivers] backup -> {backup_path}")
+
+    manifest = None
+    try:
+        manifest = fetch_dortania_manifest()
+    except Exception as e:
+        log.append(f"[Drivers] Dortania manifest unavailable ({e}), falling back to GitHub releases")
+
+    build = resolve_component_build({"name": "OpenCorePkg", "repo": OPENCORE_REPO}, channel, manifest)
+    asset_name = os.path.basename(build["asset_url"])
+    log.append(f"[Drivers] source={build['source']} {asset_name} -> {build['version']}")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        zip_path = os.path.join(tmp, asset_name)
+        download(build["asset_url"], zip_path)
+        if build["sha256"]:
+            actual = sha256_of(zip_path)
+            if actual != build["sha256"]:
+                raise RuntimeError(f"sha256 mismatch for {asset_name}: expected {build['sha256']}, got {actual}")
+            log.append("[Drivers] sha256 verified against Dortania manifest")
+        extract_dir = os.path.join(tmp, "extracted")
+        with zipfile.ZipFile(zip_path) as z:
+            z.extractall(extract_dir)
+
+        oc_dir = None
+        for dirpath, _, filenames in os.walk(extract_dir):
+            if "OpenCore.efi" in filenames and "X64" in dirpath.split(os.sep):
+                oc_dir = dirpath
+                break
+        if not oc_dir:
+            raise RuntimeError(f"could not locate X64/EFI/OC inside {asset_name}")
+
+        src = os.path.join(oc_dir, "Drivers", filename)
+        if not os.path.isfile(src):
+            available = sorted(os.listdir(os.path.join(oc_dir, "Drivers")))
+            raise RuntimeError(f"{filename} не найден в этой сборке OpenCorePkg. Доступны: {', '.join(available)}")
+
+        dst = os.path.join(root, "Drivers", filename)
+        shutil.copy2(src, dst)
+        log.append(f"[Drivers] {filename} <- {build['version']}")
+
+    return {"file": filename, "version": build["version"], "source": build["source"], "backup": backup_path}
+
+
 # ------------------------------------------------------------------ scan --
 
 def scan_root(root):
@@ -429,6 +548,17 @@ def scan_root(root):
                     kernel_add_status[bp] = bool(e.get("Enabled", False))
         except Exception:
             pass  # malformed config.plist - report kexts as present/unwired rather than fail the whole scan
+
+    uefi_drivers_status = {}
+    if os.path.isfile(_config_path(root)):
+        try:
+            entries = _load_config(root).get("UEFI", {}).get("Drivers", [])
+            for e in entries:
+                p = e.get("Path")
+                if p:
+                    uefi_drivers_status[p] = bool(e.get("Enabled", False))
+        except Exception:
+            pass
 
     components = []
     known_kexts = set()
@@ -481,11 +611,14 @@ def scan_root(root):
                 continue
             current_hash = sha256_of(fpath)
             rec = recorded_drivers.get(fname, {})
+            wired = fname in uefi_drivers_status
             drivers.append({
                 "file": fname,
                 "sha256": current_hash,
                 "last_known_version": rec.get("version"),
                 "changed_since_last_update": rec.get("sha256") != current_hash,
+                "wired": wired,
+                "enabled": uefi_drivers_status.get(fname) if wired else None,
             })
 
     resources_state = state.get("resources_theme", {})

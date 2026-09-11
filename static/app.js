@@ -210,8 +210,14 @@ function renderScan(data) {
   dtbody.innerHTML = '';
   for (const d of data.drivers) {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${d.file}</td><td>${d.last_known_version || '—'}</td>
-      <td>${d.changed_since_last_update ? 'да' : 'нет'}</td>`;
+    tr.appendChild(driverCheckboxCell(d));
+    tr.innerHTML += `
+      <td>${d.file}</td>
+      <td>${d.last_known_version || '—'}</td>
+      <td>${d.changed_since_last_update ? 'да' : 'нет'}</td>
+      <td>${driverStatusCell(d)}</td>
+      <td><button class="remove-btn" onclick="removeDriverFromConfig('${d.file}')"
+            ${d.wired ? '' : 'disabled'}>убрать из конфига</button></td>`;
     dtbody.appendChild(tr);
   }
 }
@@ -234,6 +240,92 @@ function kextCheckboxCell(k) {
   cb.onchange = () => toggleKext(k.bundle, cb.checked);
   td.appendChild(cb);
   return td;
+}
+
+function driverCheckboxCell(d) {
+  const td = document.createElement('td');
+  if (!d.wired) {
+    const btn = document.createElement('button');
+    btn.className = 'wire-btn';
+    btn.textContent = '+';
+    btn.title = 'Подключить в UEFI->Drivers';
+    btn.onclick = () => wireDriverToConfig(d.file);
+    td.appendChild(btn);
+    return td;
+  }
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = !!d.enabled;
+  cb.onchange = () => toggleDriver(d.file, cb.checked);
+  td.appendChild(cb);
+  return td;
+}
+
+function driverStatusCell(d) {
+  if (!d.wired) return '<span class="enabled-no">не подключён</span>';
+  return d.enabled ? '<span class="enabled-yes">включён</span>' : '<span class="enabled-no">выключен</span>';
+}
+
+async function toggleDriver(file, enabled) {
+  try {
+    await api('/api/driver/toggle', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ root: root(), file, enabled }),
+    });
+    log(`${file}: ${enabled ? 'включён' : 'выключен'}`);
+  } catch (e) {
+    log(`${file}: ошибка - ${e.message}`);
+  }
+  scanRoot();
+}
+
+async function wireDriverToConfig(file) {
+  try {
+    await api('/api/driver/add-to-config', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ root: root(), file }),
+    });
+    log(`${file}: добавлен в UEFI->Drivers`);
+  } catch (e) {
+    log(`${file}: ошибка - ${e.message}`);
+  }
+  scanRoot();
+}
+
+async function removeDriverFromConfig(file) {
+  if (!confirm(`Убрать ${file} из UEFI->Drivers? Сам файл останется в Drivers/, просто перестанет грузиться.`)) return;
+  try {
+    await api('/api/driver/remove-from-config', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ root: root(), file }),
+    });
+    log(`${file}: убран из UEFI->Drivers`);
+  } catch (e) {
+    log(`${file}: ошибка - ${e.message}`);
+  }
+  scanRoot();
+}
+
+function openAddDriver() {
+  document.getElementById('add-driver-panel').hidden = false;
+}
+function closeAddDriver() {
+  document.getElementById('add-driver-panel').hidden = true;
+}
+async function submitAddDriver() {
+  const file = document.getElementById('add-driver-name').value.trim();
+  if (!file) { log('Укажите имя файла драйвера.'); return; }
+  try {
+    const res = await api('/api/driver/fetch-from-opencore', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ root: root(), file, channel: channel() }),
+    });
+    res.log.forEach(log);
+    await wireDriverToConfig(file);
+    closeAddDriver();
+  } catch (e) {
+    log(`${file}: ошибка - ${e.message}`);
+  }
 }
 
 function sourceBadgeHtml(source) {

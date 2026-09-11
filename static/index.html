@@ -68,8 +68,8 @@
   </table>
   <div class="row list-actions">
     <button onclick="selectAllRows('components-table')">Выделить всё</button>
-    <button onclick="updateAllComponents()">Обновить всё</button>
     <button class="plus-minus" onclick="openAddComponent()">+ Добавить</button>
+    <button onclick="updateAllComponents()">Обновить</button>
     <button class="danger-btn" id="components-delete-btn" onclick="startBulkDelete('components-table')">Удалить</button>
     <button class="danger-btn" id="components-confirm-btn" onclick="confirmBulkDelete('components-table')" hidden>Подтвердить удаление</button>
     <button id="components-cancel-btn" onclick="cancelBulkDelete('components-table')" hidden>Отмена</button>
@@ -135,8 +135,8 @@
   </table>
   <div class="row list-actions">
     <button onclick="selectAllRows('drivers-table')">Выделить всё</button>
-    <button onclick="updateOpenCore()">Обновить Drivers/*.efi</button>
     <button class="plus-minus" onclick="openAddDriver()">+ Добавить из текущей сборки</button>
+    <button onclick="updateOpenCore()">Обновить Drivers/*.efi</button>
     <button class="danger-btn" id="drivers-delete-btn" onclick="startBulkDelete('drivers-table')">Удалить</button>
     <button class="danger-btn" id="drivers-confirm-btn" onclick="confirmBulkDelete('drivers-table')" hidden>Подтвердить удаление</button>
     <button id="drivers-cancel-btn" onclick="cancelBulkDelete('drivers-table')" hidden>Отмена</button>

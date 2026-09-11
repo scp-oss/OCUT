@@ -169,8 +169,7 @@ function renderScan(data) {
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td><input type="checkbox" class="row-select" data-value="${k.bundle}"></td>
-        <td>${c.name}<br><span class="hint">${k.bundle}</span>
-          <button class="link-btn" onclick="updateComponent('${c.name}')">обновить</button></td>
+        <td>${c.name}<br><span class="hint">${k.bundle}</span></td>
         <td>${k.local_version || (k.present ? '?' : '—')}</td>
         <td>${latest} ${sourceBadge}</td>
         <td>${kextStatusActionHtml(k)}</td>`;

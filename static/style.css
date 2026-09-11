@@ -37,9 +37,7 @@ input, select, button { font-size: 0.9rem; padding: 0.3rem 0.5rem; }
 .enabled-yes { color: #15803d; }
 .enabled-no { color: #b45309; }
 .enabled-missing { color: #b91c1c; }
-.remove-btn { color: #b91c1c; background: none; border: 1px solid #b91c1c; border-radius: 4px; padding: 0.1rem 0.5rem; }
 .wire-btn { color: #1d4ed8; background: none; border: 1px solid #1d4ed8; border-radius: 4px; padding: 0.1rem 0.5rem; }
-.link-btn { color: #1d4ed8; background: none; border: none; padding: 0; font-size: 0.8rem; text-decoration: underline; cursor: pointer; }
 .danger-btn { color: #fff; background: #b91c1c; border: 1px solid #b91c1c; border-radius: 4px; }
 th:first-child, td:first-child { width: 1.5rem; text-align: center; }
 

@@ -627,7 +627,18 @@ def remove_kexts_from_config_bulk(root, bundles):
     'Подтвердить удаление' flow - tolerant of an already-unwired bundle in
     the selection (skipped, not an error), since the row checkbox is a
     plain row-selector and doesn't restrict selection to only-wired
-    rows."""
+    rows.
+
+    ALSO untracks (components.json) any component whose every kext is
+    included in this batch - live report: unwiring IntelMausi.kext left
+    its tracked component in place, so it kept reappearing in the table
+    on every rescan (file still in Kexts/, still tracked) looking like
+    "Удалить" had silently failed. remove_component() already existed
+    for exactly this but was never wired into either frontend's delete
+    flow - a component with kexts NOT fully included in this batch (e.g.
+    removing only one of VirtualSMC's several plugins) is left tracked
+    and only has the selected kext(s) unwired, so a partial removal never
+    silently stops tracking the rest of that component."""
     removed, skipped = [], []
     for bundle in bundles:
         try:
@@ -635,7 +646,14 @@ def remove_kexts_from_config_bulk(root, bundles):
             removed.append(bundle)
         except RuntimeError:
             skipped.append(bundle)
-    return {"removed": removed, "skipped": skipped}
+
+    bundles_set = set(bundles)
+    components = load_components()
+    untracked = [c["name"] for c in components if set(c["kexts"]) <= bundles_set]
+    if untracked:
+        save_components([c for c in components if c["name"] not in untracked])
+
+    return {"removed": removed, "skipped": skipped, "untracked": untracked}
 
 
 def reorder_kexts_in_config(root, ordered_bundles):

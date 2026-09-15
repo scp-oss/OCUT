@@ -1090,6 +1090,8 @@ class MainWindow(QMainWindow):
                 msg = f"Убрано из Kernel->Add: {', '.join(res['removed']) or '(ничего)'} (сами файлы остались в Kexts/)"
                 if res["skipped"]:
                     msg += f"; уже не были подключены: {', '.join(res['skipped'])}"
+                if res.get("untracked"):
+                    msg += f"; снято с отслеживания: {', '.join(res['untracked'])}"
                 self.log(msg)
                 self.rescan()
 

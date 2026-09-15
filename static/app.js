@@ -393,7 +393,8 @@ async function confirmBulkDelete(tableId) {
     });
     log(`Убрано из ${cfg.where}: ${res.removed.join(', ') || '(ничего)'} ` +
         `(сами файлы остались в ${cfg.dir}/)` +
-        (res.skipped.length ? `; уже не были подключены: ${res.skipped.join(', ')}` : ''));
+        (res.skipped.length ? `; уже не были подключены: ${res.skipped.join(', ')}` : '') +
+        (res.untracked && res.untracked.length ? `; снято с отслеживания: ${res.untracked.join(', ')}` : ''));
   } catch (e) {
     log(`Удалить ${cfg.noun}: ` + e.message);
   }

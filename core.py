@@ -745,6 +745,25 @@ def fetch_driver_from_opencore(root, filename, channel, log):
 
 # ------------------------------------------------------------------ scan --
 
+def _describe_extra_kext(kexts_dir, name, kernel_add_status):
+    """Same per-kext status shape as a tracked component's kexts entries
+    (bundle/present/local_version/wired/enabled) - for a .kext that's
+    physically in Kexts/ but isn't part of any tracked component
+    (components.json), so it can still be shown, wired, and toggled from
+    the UI instead of silently disappearing from the table. `present` is
+    always True here - the caller already found this bundle by listing
+    the Kexts/ directory itself."""
+    path = os.path.join(kexts_dir, name)
+    wired = name in kernel_add_status
+    return {
+        "bundle": name,
+        "present": True,
+        "local_version": local_kext_version(path),
+        "wired": wired,
+        "enabled": kernel_add_status.get(name) if wired else None,
+    }
+
+
 def scan_root(root):
     """Read-only: no network, no writes. Returns a JSON-able dict describing
     what's on disk right now."""
@@ -800,9 +819,9 @@ def scan_root(root):
             if is_junk_metadata_name(name) or not name.endswith(".kext"):
                 continue
             if name in MANUAL_ONLY_KEXTS:
-                manual_kexts.append(name)
+                manual_kexts.append(_describe_extra_kext(kexts_dir, name, kernel_add_status))
             elif name not in known_kexts:
-                other_kexts.append(name)
+                other_kexts.append(_describe_extra_kext(kexts_dir, name, kernel_add_status))
 
     oc_efi_path = os.path.join(root, "OpenCore.efi")
     oc_info = {"present": os.path.isfile(oc_efi_path)}

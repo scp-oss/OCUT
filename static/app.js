@@ -176,6 +176,14 @@ function renderScan(data) {
       tbody.appendChild(tr);
     }
   }
+  for (const k of (data.other_kexts_present || [])) {
+    tbody.appendChild(extraKextRow(k, 'на диске',
+      'Есть в Kexts/, но не отслеживается ни одним компонентом - подключите кнопкой "+", если нужен.'));
+  }
+  for (const k of (data.manual_only_kexts_present || [])) {
+    tbody.appendChild(extraKextRow(k, 'на диске, ручной',
+      'Файл для этой платы, собран/подобран вручную - у него нет апстрима, поэтому версия не проверяется.'));
+  }
 
   const oc = data.opencore;
   document.getElementById('oc-channel-label').textContent = channel();
@@ -226,6 +234,23 @@ function kextStatusActionHtml(k) {
   }
   return `<input type="checkbox" ${k.enabled ? 'checked' : ''} onchange="toggleKext('${k.bundle}', this.checked)"> ` +
     (k.enabled ? '<span class="enabled-yes">включён</span>' : '<span class="enabled-no">выключен</span>');
+}
+
+// A .kext physically present in Kexts/ but not part of any tracked
+// component (components.json) - still shown as its own row (with a "на
+// диске" badge instead of a component name, and no online version check
+// since nothing tracks where it came from) so it can be wired in via the
+// same "+" button as any other kext, per direct request: the table
+// should reflect what's actually on disk, not just what's tracked.
+function extraKextRow(k, badgeText, badgeTitle) {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input type="checkbox" class="row-select" data-value="${k.bundle}"></td>
+    <td>${k.bundle} <span class="badge badge-ondisk" title="${badgeTitle}">${badgeText}</span></td>
+    <td>${k.local_version || '?'}</td>
+    <td>—</td>
+    <td>${kextStatusActionHtml(k)}</td>`;
+  return tr;
 }
 
 function driverStatusActionHtml(d) {

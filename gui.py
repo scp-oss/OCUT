@@ -49,45 +49,121 @@ def _git_short_commit():
         pass
     return "?"
 
-STYLE_SHEET = """
-QWidget { font-size: 13px; color: #1d1d1f; }
-QMainWindow, QDialog { background: #f5f5f7; }
-QLineEdit, QComboBox {
-    padding: 5px 8px; border: 1px solid #d0d0d5; border-radius: 6px; background: white; color: #1d1d1f;
+# Two color palettes (light/dark) - which one applies is auto-detected
+# from the OS at startup (see detect_color_scheme()/apply_theme()) and
+# re-applied live if the OS theme changes while the app is running.
+# Keyed identically so build_style_sheet()/every inline setStyleSheet()
+# call below can just pull from whichever one is currently active
+# (CURRENT_COLORS) without caring which theme it actually is.
+LIGHT_COLORS = {
+    "text": "#1d1d1f", "text_dim": "#666666", "text_faint": "#888888",
+    "window_bg": "#f5f5f7", "surface_bg": "#ffffff", "input_bg": "#ffffff",
+    "input_border": "#d0d0d5", "border": "#e2e2e6", "border_light": "#dddddd",
+    "grid_line": "#eeeeee", "alt_row_bg": "#fafafc", "header_bg": "#f0f0f3",
+    "tab_bg": "#ebebef", "hover_bg": "#eef2ff", "hover_border": "#b8c4f0",
+    "disabled_text": "#aaaaaa", "disabled_bg": "#f0f0f0",
+    "card_bg": "#fafafc", "card_border": "#dddddd", "success_bg": "#d1fae5",
+    "badge_dortania_bg": "#ede9fe", "badge_dortania_fg": "#5b21b6",
+    "badge_github_bg": "#e5e7eb", "badge_github_fg": "#374151",
 }
-QComboBox QAbstractItemView { background: white; color: #1d1d1f; }
-QPushButton {
-    padding: 6px 14px; border-radius: 6px; border: 1px solid #d0d0d5;
-    background: #ffffff; color: #1d1d1f;
+DARK_COLORS = {
+    "text": "#f0f0f2", "text_dim": "#a0a0a6", "text_faint": "#8a8a90",
+    "window_bg": "#1e1e22", "surface_bg": "#2a2a2f", "input_bg": "#2a2a2f",
+    "input_border": "#3f3f46", "border": "#3a3a40", "border_light": "#3a3a40",
+    "grid_line": "#333338", "alt_row_bg": "#26262b", "header_bg": "#232328",
+    "tab_bg": "#232328", "hover_bg": "#2d3550", "hover_border": "#4a5a8f",
+    "disabled_text": "#5c5c62", "disabled_bg": "#232328",
+    "card_bg": "#232328", "card_border": "#3a3a40", "success_bg": "#123524",
+    "badge_dortania_bg": "#3a2e63", "badge_dortania_fg": "#c4b5fd",
+    "badge_github_bg": "#3a3a40", "badge_github_fg": "#d1d5db",
 }
-QPushButton:hover { background: #eef2ff; border-color: #b8c4f0; }
-QPushButton:disabled { color: #aaa; background: #f0f0f0; }
-QPushButton#primary { background: #0071e3; color: white; border: none; font-weight: 600; }
-QPushButton#primary:hover { background: #0077ed; }
-QPushButton#danger { background: #d93025; color: white; border: none; font-weight: 600; }
-QPushButton#danger:hover { background: #e6392e; }
-QTableWidget {
-    background: white; color: #1d1d1f; border: 1px solid #e2e2e6; border-radius: 8px;
-    gridline-color: #eee; alternate-background-color: #fafafc;
-}
-QHeaderView::section {
-    background: #f0f0f3; color: #1d1d1f; padding: 6px; border: none; border-bottom: 1px solid #ddd;
-    font-weight: 600;
-}
-QTabWidget::pane { border: 1px solid #e2e2e6; border-radius: 8px; top: -1px; background: white; }
-QTabBar::tab {
+CURRENT_COLORS = LIGHT_COLORS  # replaced by apply_theme() before any UI is built
+
+
+def build_style_sheet(c):
+    return f"""
+QWidget {{ font-size: 13px; color: {c['text']}; }}
+QMainWindow, QDialog {{ background: {c['window_bg']}; }}
+QLineEdit, QComboBox {{
+    padding: 5px 8px; border: 1px solid {c['input_border']}; border-radius: 6px;
+    background: {c['input_bg']}; color: {c['text']};
+}}
+QComboBox QAbstractItemView {{ background: {c['input_bg']}; color: {c['text']}; }}
+QPushButton {{
+    padding: 6px 14px; border-radius: 6px; border: 1px solid {c['input_border']};
+    background: {c['surface_bg']}; color: {c['text']};
+}}
+QPushButton:hover {{ background: {c['hover_bg']}; border-color: {c['hover_border']}; }}
+QPushButton:disabled {{ color: {c['disabled_text']}; background: {c['disabled_bg']}; }}
+QPushButton#primary {{ background: #0071e3; color: white; border: none; font-weight: 600; }}
+QPushButton#primary:hover {{ background: #0077ed; }}
+QPushButton#danger {{ background: #d93025; color: white; border: none; font-weight: 600; }}
+QPushButton#danger:hover {{ background: #e6392e; }}
+QTableWidget {{
+    background: {c['surface_bg']}; color: {c['text']}; border: 1px solid {c['border']}; border-radius: 8px;
+    gridline-color: {c['grid_line']}; alternate-background-color: {c['alt_row_bg']};
+}}
+QHeaderView::section {{
+    background: {c['header_bg']}; color: {c['text']}; padding: 6px; border: none;
+    border-bottom: 1px solid {c['border_light']}; font-weight: 600;
+}}
+QTabWidget::pane {{ border: 1px solid {c['border']}; border-radius: 8px; top: -1px; background: {c['surface_bg']}; }}
+QTabBar::tab {{
     padding: 7px 16px; margin-right: 2px; border-top-left-radius: 6px; border-top-right-radius: 6px;
-    background: #ebebef; color: #1d1d1f;
-}
-QTabBar::tab:selected { background: white; font-weight: 600; }
-QGroupBox {
-    border: 1px solid #e2e2e6; border-radius: 8px; margin-top: 10px; padding-top: 14px;
-    font-weight: 600; color: #1d1d1f;
-}
-QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; }
-#LogPanel { background: #111318; color: #dcdcdc; border-radius: 8px; padding: 6px; }
-.badge { border-radius: 8px; padding: 1px 7px; font-size: 11px; font-weight: 600; }
+    background: {c['tab_bg']}; color: {c['text']};
+}}
+QTabBar::tab:selected {{ background: {c['surface_bg']}; font-weight: 600; }}
+QGroupBox {{
+    border: 1px solid {c['border']}; border-radius: 8px; margin-top: 10px; padding-top: 14px;
+    font-weight: 600; color: {c['text']};
+}}
+QGroupBox::title {{ subcontrol-origin: margin; left: 10px; padding: 0 4px; }}
+#LogPanel {{ background: #111318; color: #dcdcdc; border-radius: 8px; padding: 6px; }}
+.badge {{ border-radius: 8px; padding: 1px 7px; font-size: 11px; font-weight: 600; }}
 """
+
+
+def detect_color_scheme(app):
+    """'dark' or 'light', from the OS - Qt.ColorScheme needs Qt 6.5+
+    (this project's own floor, see requirements.txt). Falls back to
+    'light' if the platform can't report a scheme (Qt.ColorScheme.Unknown -
+    some Linux desktops/window managers don't expose one)."""
+    try:
+        scheme = app.styleHints().colorScheme()
+        if scheme == Qt.ColorScheme.Dark:
+            return "dark"
+    except Exception:
+        pass
+    return "light"
+
+
+def apply_theme(app, scheme):
+    """Applies one of LIGHT_COLORS/DARK_COLORS as both the QPalette (so
+    native/unstyled bits like scrollbars match too) and the QSS built by
+    build_style_sheet(). Forcing Fusion is what makes this reliable in
+    the first place - the native Windows style is dark-mode-aware since
+    Qt 6.5 and will otherwise silently pick its own (often mismatched)
+    text/background colors regardless of what we set here."""
+    global CURRENT_COLORS
+    CURRENT_COLORS = DARK_COLORS if scheme == "dark" else LIGHT_COLORS
+    c = CURRENT_COLORS
+    app.setStyle("Fusion")
+    palette = app.palette()
+    palette.setColor(QPalette.Window, QColor(c["window_bg"]))
+    palette.setColor(QPalette.WindowText, QColor(c["text"]))
+    palette.setColor(QPalette.Base, QColor(c["input_bg"]))
+    palette.setColor(QPalette.Text, QColor(c["text"]))
+    palette.setColor(QPalette.Button, QColor(c["surface_bg"]))
+    palette.setColor(QPalette.ButtonText, QColor(c["text"]))
+    palette.setColor(QPalette.ToolTipBase, QColor(c["surface_bg"]))
+    palette.setColor(QPalette.ToolTipText, QColor(c["text"]))
+    app.setPalette(palette)
+    app.setStyleSheet(build_style_sheet(c))
+
+
+def dim_style(size=11):
+    return f"color:{CURRENT_COLORS['text_dim']}; font-size:{size}px;"
+
 
 COLOR_YES = "#15803d"
 COLOR_NO = "#b45309"
@@ -102,9 +178,9 @@ def badge_label(text, bg, fg):
 
 def source_badge(source):
     if source == "dortania":
-        return badge_label("Dortania", "#ede9fe", "#5b21b6")
+        return badge_label("Dortania", CURRENT_COLORS["badge_dortania_bg"], CURRENT_COLORS["badge_dortania_fg"])
     if source == "github":
-        return badge_label("GitHub", "#e5e7eb", "#374151")
+        return badge_label("GitHub", CURRENT_COLORS["badge_github_bg"], CURRENT_COLORS["badge_github_fg"])
     return None
 
 
@@ -272,7 +348,7 @@ class AddKextDialog(QDialog):
         hint = QLabel("Список из каталога кекстов OpCore-Simplify — скачивается через Dortania/GitHub, "
                       "как и всё остальное в этом инструменте.")
         hint.setWordWrap(True)
-        hint.setStyleSheet("color:#666; font-size:11px;")
+        hint.setStyleSheet(dim_style())
         lay.addWidget(hint)
         return w
 
@@ -338,7 +414,7 @@ class AddKextDialog(QDialog):
         pick_btn.clicked.connect(self._pick_local_folder)
         row.addWidget(pick_btn)
         self.local_folder_hint = QLabel("")
-        self.local_folder_hint.setStyleSheet("color:#666;")
+        self.local_folder_hint.setStyleSheet(dim_style())
         row.addWidget(self.local_folder_hint, 1)
         lay.addLayout(row)
 
@@ -349,7 +425,7 @@ class AddKextDialog(QDialog):
                       "можно после этого кнопкой «+» в таблице — так же, как для любого другого уже лежащего, "
                       "но не подключённого кекста.")
         hint.setWordWrap(True)
-        hint.setStyleSheet("color:#666; font-size:11px;")
+        hint.setStyleSheet(dim_style())
         lay.addWidget(hint)
 
         self._local_folder = None
@@ -418,7 +494,7 @@ class AddKextDialog(QDialog):
         lay.addWidget(btn)
 
         hint = QLabel("Название компонента берётся из репозитория автоматически.")
-        hint.setStyleSheet("color:#666; font-size:11px;")
+        hint.setStyleSheet(dim_style())
         lay.addWidget(hint)
         lay.addStretch(1)
         return w
@@ -458,7 +534,7 @@ class AddDriverDialog(QDialog):
         hint = QLabel("Скачивает этот файл из текущей (Dortania/GitHub, канал выбран в главном окне) сборки "
                       "OpenCorePkg, даже если его раньше не было в Drivers/, и сразу подключает в UEFI→Drivers.")
         hint.setWordWrap(True)
-        hint.setStyleSheet("color:#666; font-size:11px;")
+        hint.setStyleSheet(dim_style())
         lay.addWidget(hint)
 
         row = QHBoxLayout()
@@ -750,7 +826,7 @@ class MainWindow(QMainWindow):
         hint = QLabel("Все драйверы идут одной сборкой OpenCorePkg (нет отдельной версии на файл) — "
                       "«обновить» перекачивает Drivers/*.efi целиком, как и в блоке OpenCore.")
         hint.setWordWrap(True)
-        hint.setStyleSheet("color:#666; font-size:11px;")
+        hint.setStyleSheet(dim_style())
         lay.addWidget(hint)
 
         self.drivers_table = QTableWidget(0, 5)
@@ -821,7 +897,7 @@ class MainWindow(QMainWindow):
 
         self.oc_info_label = QLabel("")
         self.oc_info_label.setWordWrap(True)
-        self.oc_info_label.setStyleSheet("color:#666; font-size:11px;")
+        self.oc_info_label.setStyleSheet(dim_style())
         box_lay.addWidget(self.oc_info_label)
 
         parts_row = QHBoxLayout()
@@ -847,10 +923,13 @@ class MainWindow(QMainWindow):
 
     def _version_box(self, label_text, value_label):
         box = QFrame()
-        box.setStyleSheet("QFrame { border: 1px solid #ddd; border-radius: 8px; background: #fafafc; }")
+        box.setStyleSheet(
+            f"QFrame {{ border: 1px solid {CURRENT_COLORS['card_border']}; border-radius: 8px; "
+            f"background: {CURRENT_COLORS['card_bg']}; }}"
+        )
         v = QVBoxLayout(box)
         lbl = QLabel(label_text.upper())
-        lbl.setStyleSheet("color:#888; font-size:10px; font-weight:600;")
+        lbl.setStyleSheet(f"color:{CURRENT_COLORS['text_faint']}; font-size:10px; font-weight:600;")
         v.addWidget(lbl)
         v.addWidget(value_label)
         return box
@@ -879,7 +958,7 @@ class MainWindow(QMainWindow):
                       "Resources/ (Image/Label/Font в нужной структуре) тоже подойдёт — на свой риск, "
                       "он не проверяется.")
         hint.setWordWrap(True)
-        hint.setStyleSheet("color:#666; font-size:11px;")
+        hint.setStyleSheet(dim_style())
         lay.addWidget(hint)
         lay.addStretch(1)
         return w
@@ -895,7 +974,7 @@ class MainWindow(QMainWindow):
                       "отдельный файл, отчёт показывает, что перенеслось, что осталось дефолтным, что "
                       "несовместимо по типу и что убрали из новой схемы.")
         hint.setWordWrap(True)
-        hint.setStyleSheet("color:#666; font-size:11px;")
+        hint.setStyleSheet(dim_style())
         lay.addWidget(hint)
 
         btn_row = QHBoxLayout()
@@ -1059,7 +1138,7 @@ class MainWindow(QMainWindow):
             name_cell = QWidget()
             name_lay = QHBoxLayout(name_cell)
             name_lay.setContentsMargins(4, 2, 4, 2)
-            hint_html = (f"<br><span style='color:#888;font-size:11px;'>{entry['bundle_hint']}</span>"
+            hint_html = (f"<br><span style='color:{CURRENT_COLORS['text_faint']};font-size:11px;'>{entry['bundle_hint']}</span>"
                          if entry["bundle_hint"] else "")
             name_text = QLabel(f"<b>{entry['display_name']}</b>{hint_html}")
             name_lay.addWidget(name_text)
@@ -1071,7 +1150,7 @@ class MainWindow(QMainWindow):
             local_ver = k.get("local_version") or ("?" if k.get("present") else "—")
             local_ver_item = QTableWidgetItem(local_ver)
             if entry.get("outdated"):
-                local_ver_item.setBackground(QColor("#d1fae5"))
+                local_ver_item.setBackground(QColor(CURRENT_COLORS["success_bg"]))
             table.setItem(row, 2, local_ver_item)
 
             latest_cell = QWidget()
@@ -1094,7 +1173,7 @@ class MainWindow(QMainWindow):
                 # already matches gets no highlight and update_all_
                 # components() skips it entirely instead of re-downloading
                 # something that's already current.
-                latest_cell.setStyleSheet("background-color: #d1fae5;")
+                latest_cell.setStyleSheet(f"background-color: {CURRENT_COLORS['success_bg']};")
             table.setCellWidget(row, 3, latest_cell)
 
             # Staged (not yet written) enable/disable overrides the
@@ -1532,21 +1611,25 @@ def main():
     # while only the few widgets styled with an explicit color (primary/
     # danger buttons, disabled state) stayed legible. Confirmed live:
     # "Кексты" tab and "Выбрать папку.../Сканировать" buttons rendered
-    # completely blank on a real Windows 11 dark-mode machine.
-    app.setStyle("Fusion")
-    palette = app.palette()
-    palette.setColor(QPalette.Window, QColor("#f5f5f7"))
-    palette.setColor(QPalette.WindowText, QColor("#1d1d1f"))
-    palette.setColor(QPalette.Base, QColor("#ffffff"))
-    palette.setColor(QPalette.Text, QColor("#1d1d1f"))
-    palette.setColor(QPalette.Button, QColor("#ffffff"))
-    palette.setColor(QPalette.ButtonText, QColor("#1d1d1f"))
-    palette.setColor(QPalette.ToolTipBase, QColor("#ffffff"))
-    palette.setColor(QPalette.ToolTipText, QColor("#1d1d1f"))
-    app.setPalette(palette)
-    app.setStyleSheet(STYLE_SHEET)
+    # completely blank on a real Windows 11 dark-mode machine - fixed by
+    # forcing Fusion + an explicit palette, now auto-picked to match the
+    # OS's own light/dark setting instead of hardcoded to light.
+    apply_theme(app, detect_color_scheme(app))
     window = MainWindow()
     window.show()
+
+    # If the OS theme changes while the app is already running, follow it
+    # live - re-polishes every widget styled through the app stylesheet/
+    # palette automatically. The few labels styled with a literal
+    # setStyleSheet() call at construction time (hint text, badges) only
+    # pick up the new colors the next time they're rebuilt (e.g. the next
+    # rescan) rather than instantly - a minor, accepted gap given how
+    # rarely anyone flips OS theme mid-session.
+    def _on_scheme_changed(scheme):
+        apply_theme(app, "dark" if scheme == Qt.ColorScheme.Dark else "light")
+
+    app.styleHints().colorSchemeChanged.connect(_on_scheme_changed)
+
     sys.exit(app.exec())
 
 

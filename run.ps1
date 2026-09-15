@@ -117,7 +117,16 @@ try {
 }
 if ($needsPySide6) {
     Write-Host "Installing PySide6 (one-time)..."
-    & $PythonCmd -m pip install --user -r requirements.txt
+    # OCUT_PYPI_PROXY (optional) points pip at a self-hosted Cloudflare
+    # Worker (see cf_worker/) instead of pypi.org/files.pythonhosted.org
+    # directly - for an ISP that throttles that direct connection
+    # specifically (the wheels here are 70-170MB, a very visible target).
+    $pipArgs = @()
+    if ($env:OCUT_PYPI_PROXY) {
+        $proxy = $env:OCUT_PYPI_PROXY.TrimEnd('/')
+        $pipArgs = @("--index-url", "$proxy/simple/")
+    }
+    & $PythonCmd -m pip install --user @pipArgs -r requirements.txt
 }
 
 & $PythonCmd gui.py

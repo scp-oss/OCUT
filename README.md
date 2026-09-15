@@ -56,6 +56,38 @@ irm https://raw.githubusercontent.com/scp-oss/OCUT/claude/gifted-thompson-3q1e6m
 Ничего ставить заранее не нужно — `git` и Python, если их ещё нет,
 `run.ps1` установит сам через `winget`.
 
+### Провайдер режет скорость скачивания PySide6
+
+Колёса PySide6 большие (70–170 МБ), и у некоторых провайдеров прямое
+соединение с `files.pythonhosted.org` попадает под троттлинг — скачивание
+может занимать 15+ минут вместо десятков секунд. Если это ваш случай,
+поднимите свой прокси на Cloudflare Workers (бесплатного тарифа хватает):
+
+```bash
+bash cf_worker/deploy.sh
+```
+
+Нужен Node.js и аккаунт Cloudflare — скрипт попросит API-токен
+(https://dash.cloudflare.com/profile/api-tokens, шаблон «Edit Cloudflare
+Workers») и задеплоит воркер. На Windows запускайте из Git Bash (уже
+ставится вместе с git). После деплоя укажите полученный URL перед
+запуском:
+
+```bash
+OCUT_PYPI_PROXY=https://ocut-pypi-proxy.<ваш-поддомен>.workers.dev bash run.sh
+```
+
+```powershell
+$env:OCUT_PYPI_PROXY = "https://ocut-pypi-proxy.<ваш-поддомен>.workers.dev"
+irm https://raw.githubusercontent.com/scp-oss/OCUT/claude/gifted-thompson-3q1e6m/run.ps1 | iex
+```
+
+Трафик идёт через `workers.dev` на edge Cloudflare вместо прямого
+соединения с PyPI — тот же принцип, что и у обхода троттлинга/блокировок
+в других местах. Скачанные файлы дополнительно кешируются на 30 дней
+(колёса неизменяемы после публикации), так что повторная установка или
+второй компьютер вообще не ходят к настоящему PyPI.
+
 ## Что умеет
 
 - **Кексты** — таблица отслеживаемых компонентов: текущая/доступная

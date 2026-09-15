@@ -112,9 +112,19 @@ cd "$REPO_DIR"
 # accepts (tkinter ships with Python but can't get anywhere near the
 # modern/native look the GUI was built for). Installed once on first run;
 # every later run just imports the already-installed package.
+#
+# OCUT_PYPI_PROXY (optional) points pip at a self-hosted Cloudflare
+# Worker (see cf_worker/) instead of pypi.org/files.pythonhosted.org
+# directly - for an ISP that throttles that direct connection
+# specifically (the wheels here are 70-170MB, a very visible target).
+PIP_EXTRA_ARGS=()
+if [ -n "$OCUT_PYPI_PROXY" ]; then
+    PIP_EXTRA_ARGS=(--index-url "${OCUT_PYPI_PROXY%/}/simple/")
+fi
+
 if ! python3 -c "import PySide6" >/dev/null 2>&1; then
     echo "Installing PySide6 (one-time)..."
-    python3 -m pip install --user -r requirements.txt
+    python3 -m pip install --user "${PIP_EXTRA_ARGS[@]}" -r requirements.txt
 fi
 
 exec python3 gui.py "$@"

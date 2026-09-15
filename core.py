@@ -638,6 +638,30 @@ def remove_kexts_from_config_bulk(root, bundles):
     return {"removed": removed, "skipped": skipped}
 
 
+def reorder_kexts_in_config(root, ordered_bundles):
+    """Reorders Kernel->Add entries to match `ordered_bundles` (BundlePath
+    values in the desired new load order) - this is the actual load
+    order OpenCore/the kernel uses (e.g. Lilu needs to precede
+    WhateverGreen), which is why drag-reordering the Кексты table needs
+    to write something, not just be a cosmetic UI reshuffle. Any wired
+    entry NOT mentioned in `ordered_bundles` (shouldn't normally happen -
+    every caller passes every row it currently shows) keeps its old
+    relative order, appended after the explicitly-ordered ones, rather
+    than being silently dropped or repositioned to somewhere unintended."""
+    config = _load_config(root)
+    entries = config.get("Kernel", {}).get("Add", [])
+    remaining = list(entries)
+    new_entries = []
+    for bundle in ordered_bundles:
+        idx = _find_kernel_add_index(remaining, bundle)
+        if idx != -1:
+            new_entries.append(remaining.pop(idx))
+    new_entries.extend(remaining)
+    config.setdefault("Kernel", {})["Add"] = new_entries
+    _save_config(root, config)
+    return {"order": [e.get("BundlePath") for e in new_entries]}
+
+
 # ------------------------------------------------------------ UEFI->Drivers
 
 def _find_uefi_driver_index(entries, filename):

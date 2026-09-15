@@ -628,6 +628,23 @@ class MainWindow(QMainWindow):
         self.kexts_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         header = self.kexts_table.horizontalHeader()
         header.setSectionResizeMode(1, QHeaderView.Stretch)
+        # Drag-to-reorder changes the real Kernel->Add load order (Lilu
+        # needs to precede WhateverGreen, etc.) - not just a cosmetic
+        # reshuffle. QTableWidget's setCellWidget()'d widgets (the
+        # checkboxes/buttons in every row here) do NOT participate in
+        # Qt's internal row-move drag-and-drop, only QTableWidgetItems do
+        # - _render_kexts_table() therefore also stashes each row's
+        # bundle name as UserRole data on a plain (invisible) item in
+        # column 0, which IS what actually moves; _on_kexts_reordered()
+        # reads the new order back off those items once a drop lands,
+        # writes it, then rescans to rebuild every cell widget fresh in
+        # the new row order (they'd otherwise be left visually stuck at
+        # their pre-drag positions).
+        self.kexts_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.kexts_table.setDragDropMode(QAbstractItemView.InternalMove)
+        self.kexts_table.setDragEnabled(True)
+        self.kexts_table.setDropIndicatorShown(True)
+        self.kexts_table.model().rowsMoved.connect(self._on_kexts_reordered)
         lay.addWidget(self.kexts_table, 1)
 
         btn_row = QHBoxLayout()
@@ -855,6 +872,14 @@ class MainWindow(QMainWindow):
             row = table.rowCount()
             table.insertRow(row)
 
+            # A plain item carries the bundle name as UserRole data - this
+            # is what Qt's internal drag-move actually reorders (see the
+            # comment on setDragDropMode above); the visible checkbox is
+            # a separate cellWidget layered over the same cell.
+            order_item = QTableWidgetItem()
+            order_item.setData(Qt.UserRole, k["bundle"])
+            table.setItem(row, 0, order_item)
+
             sel_cell = QWidget()
             sel_lay = QHBoxLayout(sel_cell)
             sel_lay.setContentsMargins(0, 0, 0, 0)
@@ -1056,6 +1081,30 @@ class MainWindow(QMainWindow):
             self.run_worker(core.remove_drivers_from_config_bulk, root, values, on_success=on_done)
 
     # ------------------------------------------------------------ kexts --
+
+    def _on_kexts_reordered(self, *args):
+        """Fires after a drag-and-drop row move lands (connected to the
+        table model's own rowsMoved signal). Reads the new bundle order
+        back off column 0's items (the actual thing Qt moved - see the
+        setDragDropMode comment in _build_kexts_tab), writes it to
+        Kernel->Add, then rescans: the row cellWidgets themselves don't
+        follow a drag move and would otherwise be left showing the wrong
+        kext's checkbox/status at each position until rebuilt fresh."""
+        root = self.root_path()
+        if not root:
+            return
+        ordered_bundles = []
+        for r in range(self.kexts_table.rowCount()):
+            item = self.kexts_table.item(r, 0)
+            bundle = item.data(Qt.UserRole) if item else None
+            if bundle:
+                ordered_bundles.append(bundle)
+        try:
+            core.reorder_kexts_in_config(root, ordered_bundles)
+            self.log("Порядок загрузки кекстов обновлён.")
+        except Exception as e:
+            self.log(f"Изменение порядка: {e}")
+        self.rescan()
 
     def wire_kext(self, bundle):
         root = self.root_path()

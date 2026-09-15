@@ -132,6 +132,9 @@ class Handler(BaseHTTPRequestHandler):
             elif parsed.path == "/api/kext/remove-from-config-bulk":
                 self._json(200, core.remove_kexts_from_config_bulk(body["root"], body["bundles"]))
 
+            elif parsed.path == "/api/kext/reorder":
+                self._json(200, core.reorder_kexts_in_config(body["root"], body["order"]))
+
             elif parsed.path == "/api/driver/toggle":
                 self._json(200, core.set_driver_enabled(body["root"], body["file"], body["enabled"]))
 

@@ -174,16 +174,21 @@ function renderScan(data) {
         <td>${k.local_version || (k.present ? '?' : '—')}</td>
         <td>${latest} ${sourceBadge}</td>
         <td>${kextStatusActionHtml(k)}</td>`;
+      makeKextRowDraggable(tr, k.bundle);
       tbody.appendChild(tr);
     }
   }
   for (const k of (data.other_kexts_present || [])) {
-    tbody.appendChild(extraKextRow(k, 'на диске',
-      'Есть в Kexts/, но не отслеживается ни одним компонентом - подключите кнопкой "+", если нужен.'));
+    const tr = extraKextRow(k, 'на диске',
+      'Есть в Kexts/, но не отслеживается ни одним компонентом - подключите кнопкой "+", если нужен.');
+    makeKextRowDraggable(tr, k.bundle);
+    tbody.appendChild(tr);
   }
   for (const k of (data.manual_only_kexts_present || [])) {
-    tbody.appendChild(extraKextRow(k, 'на диске, ручной',
-      'Файл для этой платы, собран/подобран вручную - у него нет апстрима, поэтому версия не проверяется.'));
+    const tr = extraKextRow(k, 'на диске, ручной',
+      'Файл для этой платы, собран/подобран вручную - у него нет апстрима, поэтому версия не проверяется.');
+    makeKextRowDraggable(tr, k.bundle);
+    tbody.appendChild(tr);
   }
 
   const oc = data.opencore;
@@ -254,6 +259,54 @@ function extraKextRow(k, badgeText, badgeTitle) {
     <td>—</td>
     <td>${kextStatusActionHtml(k)}</td>`;
   return tr;
+}
+
+// ------------------------------------------------- drag-to-reorder kexts
+//
+// Kernel->Add's array order is the real kext load order (Lilu needs to
+// precede WhateverGreen, etc.) - per direct request, dragging a row in
+// the Кексты table changes it, not just the on-screen list. Plain HTML5
+// drag-and-drop, no library: dragstart remembers the source <tr>, drop
+// moves it in the DOM, then the resulting on-screen order is sent as-is
+// to /api/kext/reorder (core.reorder_kexts_in_config() only reorders
+// entries that actually exist in Kernel->Add and appends anything else
+// unchanged, so sending every visible row - wired or not - is fine).
+
+let dragSrcRow = null;
+
+function makeKextRowDraggable(tr, bundle) {
+  tr.draggable = true;
+  tr.dataset.bundle = bundle;
+  tr.addEventListener('dragstart', () => { dragSrcRow = tr; });
+  tr.addEventListener('dragover', (e) => { e.preventDefault(); });
+  tr.addEventListener('drop', (e) => {
+    e.preventDefault();
+    if (!dragSrcRow || dragSrcRow === tr) return;
+    const tbody = tr.parentNode;
+    const rows = Array.from(tbody.children);
+    if (rows.indexOf(dragSrcRow) < rows.indexOf(tr)) {
+      tbody.insertBefore(dragSrcRow, tr.nextSibling);
+    } else {
+      tbody.insertBefore(dragSrcRow, tr);
+    }
+    dragSrcRow = null;
+    submitKextOrder();
+  });
+}
+
+async function submitKextOrder() {
+  const tbody = document.querySelector('#components-table tbody');
+  const order = Array.from(tbody.children).map(tr => tr.dataset.bundle).filter(Boolean);
+  try {
+    await api('/api/kext/reorder', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ root: root(), order }),
+    });
+    log('Порядок загрузки кекстов обновлён.');
+  } catch (e) {
+    log('Изменение порядка: ' + e.message);
+  }
+  scanRoot();
 }
 
 function driverStatusActionHtml(d) {

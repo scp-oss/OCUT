@@ -1,8 +1,7 @@
 # Windows equivalent of run.sh - clones %APPDATA%\OCUT on first run,
 # updates it to the latest commit on every later run, then starts the
-# native GUI (gui.py). Requires Python 3.9+ (from python.org or the
-# Microsoft Store) already on PATH - git is installed automatically via
-# winget if it's missing.
+# native GUI (gui.py). git and Python are both installed automatically
+# via winget if either is missing.
 #
 #   irm https://raw.githubusercontent.com/scp-oss/OCUT/claude/gifted-thompson-3q1e6m/run.ps1 | iex
 
@@ -56,7 +55,40 @@ function Ensure-Git {
     }
 }
 
+# Same idea, same $PythonCmd-full-path pattern as $GitCmd above, for
+# Python - just as often missing on a fresh Windows machine as git is.
+$PythonCmd = $null
+
+function Resolve-Python {
+    $cmd = Get-Command python -ErrorAction SilentlyContinue
+    if ($cmd) {
+        $script:PythonCmd = $cmd.Source
+        return $true
+    }
+    return $false
+}
+
+function Ensure-Python {
+    if (Resolve-Python) {
+        return
+    }
+    Write-Host "python not found - attempting to install it via winget..."
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        winget install --id Python.Python.3 -e --source winget --accept-source-agreements --accept-package-agreements
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
+                    [System.Environment]::GetEnvironmentVariable("Path", "User")
+    } else {
+        Write-Host "winget is not available. Install Python manually from https://www.python.org/downloads/windows/ (tick 'Add python.exe to PATH'), then re-run this script." -ForegroundColor Red
+        exit 1
+    }
+    if (-not (Resolve-Python)) {
+        Write-Host "Python was installed but isn't on PATH in this session yet. Open a new PowerShell window and re-run this script." -ForegroundColor Red
+        exit 1
+    }
+}
+
 Ensure-Git
+Ensure-Python
 
 if (Test-Path (Join-Path $RepoDir ".git")) {
     & $GitCmd -C $RepoDir fetch origin
@@ -78,14 +110,14 @@ Set-Location $RepoDir
 # installing.
 $needsPySide6 = $true
 try {
-    python -c "import PySide6" 2>$null
+    & $PythonCmd -c "import PySide6" 2>$null
     $needsPySide6 = ($LASTEXITCODE -ne 0)
 } catch {
     $needsPySide6 = $true
 }
 if ($needsPySide6) {
     Write-Host "Installing PySide6 (one-time)..."
-    python -m pip install --user -r requirements.txt
+    & $PythonCmd -m pip install --user -r requirements.txt
 }
 
-python gui.py
+& $PythonCmd gui.py

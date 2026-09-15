@@ -10,6 +10,11 @@ REPO_URL="https://github.com/scp-oss/OCUT"
 BRANCH="claude/gifted-thompson-3q1e6m"
 REPO_DIR="$HOME/OCUT"
 
+SUDO_CMD=""
+if [ "$(id -u)" != "0" ] && command -v sudo >/dev/null 2>&1; then
+    SUDO_CMD="sudo"
+fi
+
 # Covers macOS (Homebrew, or a nudge toward Xcode Command Line Tools if
 # Homebrew itself isn't installed) and the common Linux package managers -
 # minimal/server/container images (exactly the kind of environment someone
@@ -20,10 +25,6 @@ ensure_git() {
         return
     fi
     echo "git not found - attempting to install it..."
-    sudo_cmd=""
-    if [ "$(id -u)" != "0" ] && command -v sudo >/dev/null 2>&1; then
-        sudo_cmd="sudo"
-    fi
     if [ "$(uname)" = "Darwin" ]; then
         if command -v brew >/dev/null 2>&1; then
             brew install git
@@ -32,17 +33,17 @@ ensure_git() {
             exit 1
         fi
     elif command -v apt-get >/dev/null 2>&1; then
-        $sudo_cmd apt-get update && $sudo_cmd apt-get install -y git
+        $SUDO_CMD apt-get update && $SUDO_CMD apt-get install -y git
     elif command -v dnf >/dev/null 2>&1; then
-        $sudo_cmd dnf install -y git
+        $SUDO_CMD dnf install -y git
     elif command -v yum >/dev/null 2>&1; then
-        $sudo_cmd yum install -y git
+        $SUDO_CMD yum install -y git
     elif command -v pacman >/dev/null 2>&1; then
-        $sudo_cmd pacman -Sy --noconfirm git
+        $SUDO_CMD pacman -Sy --noconfirm git
     elif command -v zypper >/dev/null 2>&1; then
-        $sudo_cmd zypper install -y git
+        $SUDO_CMD zypper install -y git
     elif command -v apk >/dev/null 2>&1; then
-        $sudo_cmd apk add git
+        $SUDO_CMD apk add git
     elif command -v brew >/dev/null 2>&1; then
         brew install git
     else
@@ -55,7 +56,47 @@ ensure_git() {
     fi
 }
 
+# Same idea as ensure_git() - python3 (plus its pip module, needed a few
+# lines down to install PySide6) is just as often missing from a minimal
+# Linux image as git is.
+ensure_python() {
+    if command -v python3 >/dev/null 2>&1; then
+        return
+    fi
+    echo "python3 not found - attempting to install it..."
+    if [ "$(uname)" = "Darwin" ]; then
+        if command -v brew >/dev/null 2>&1; then
+            brew install python3
+        else
+            echo "python3 is missing and Homebrew isn't installed. Install Python 3 from https://www.python.org/downloads/macos/, or install Homebrew first, then re-run this script." >&2
+            exit 1
+        fi
+    elif command -v apt-get >/dev/null 2>&1; then
+        $SUDO_CMD apt-get update && $SUDO_CMD apt-get install -y python3 python3-pip
+    elif command -v dnf >/dev/null 2>&1; then
+        $SUDO_CMD dnf install -y python3 python3-pip
+    elif command -v yum >/dev/null 2>&1; then
+        $SUDO_CMD yum install -y python3 python3-pip
+    elif command -v pacman >/dev/null 2>&1; then
+        $SUDO_CMD pacman -Sy --noconfirm python python-pip
+    elif command -v zypper >/dev/null 2>&1; then
+        $SUDO_CMD zypper install -y python3 python3-pip
+    elif command -v apk >/dev/null 2>&1; then
+        $SUDO_CMD apk add python3 py3-pip
+    elif command -v brew >/dev/null 2>&1; then
+        brew install python3
+    else
+        echo "Could not detect a package manager to install python3 automatically. Please install it manually and re-run this script." >&2
+        exit 1
+    fi
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "python3 installation appears to have failed. Please install it manually and re-run this script." >&2
+        exit 1
+    fi
+}
+
 ensure_git
+ensure_python
 
 if [ -d "$REPO_DIR/.git" ]; then
     git -C "$REPO_DIR" fetch origin

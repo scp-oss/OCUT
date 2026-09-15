@@ -9,8 +9,8 @@
 ## Быстрый старт
 
 Команды ниже сами клонируют (или обновляют до последнего коммита) репозиторий
-в домашнюю папку и запускают приложение. Повторный запуск той же команды
-подтягивает последние изменения.
+и запускают приложение. Повторный запуск той же команды подтягивает
+последние изменения.
 
 ### macOS
 
@@ -18,9 +18,9 @@
 curl -fsSL https://raw.githubusercontent.com/scp-oss/OCUT/claude/gifted-thompson-3q1e6m/run.sh | bash
 ```
 
-Нужен `python3` — на современном macOS он уже есть. `git`, если его
-ещё нет, `run.sh` попробует поставить сам (через Homebrew, если он
-установлен, иначе подскажет запустить `xcode-select --install`). Один
+Ничего ставить заранее не нужно — `git`/`python3`, если их ещё нет,
+`run.sh` попробует поставить сам через Homebrew (или подскажет
+`xcode-select --install`, если Homebrew тоже не установлен). Один
 пакет ставится сам при первом запуске (`PySide6`, через
 `pip install --user`).
 
@@ -33,10 +33,9 @@ macOS-специфичного:
 curl -fsSL https://raw.githubusercontent.com/scp-oss/OCUT/claude/gifted-thompson-3q1e6m/run.sh | bash
 ```
 
-Нужны `python3`, `python3-pip` (на Debian/Ubuntu:
-`sudo apt install python3 python3-pip`); `git`, если его ещё нет,
-`run.sh` поставит сам через apt-get/dnf/yum/pacman/zypper/apk — смотря
-что найдётся. Если GUI не запускается с
+Ничего ставить заранее не нужно — `git`/`python3`/`pip`, если их ещё
+нет, `run.sh` поставит сам через apt-get/dnf/yum/pacman/zypper/apk —
+смотря что найдётся. Если GUI не запускается с
 ошибкой про отсутствующие библиотеки Qt (`libEGL.so`, `libxcb-cursor`
 и т.п. — типично для минимальных/серверных установок без графического
 окружения), доставьте системные пакеты Qt отдельно, `pip` их не ставит:
@@ -54,9 +53,8 @@ sudo apt install libegl1 libxcb-cursor0 libxkbcommon0
 irm https://raw.githubusercontent.com/scp-oss/OCUT/claude/gifted-thompson-3q1e6m/run.ps1 | iex
 ```
 
-Нужен Python 3.9+ (с [python.org](https://www.python.org/) — при
-установке отметьте «Add python.exe to PATH» — или из Microsoft Store).
-`git`, если его ещё нет, `run.ps1` установит сам через `winget`.
+Ничего ставить заранее не нужно — `git` и Python, если их ещё нет,
+`run.ps1` установит сам через `winget`.
 
 ## Что умеет
 

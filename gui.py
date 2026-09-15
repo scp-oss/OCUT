@@ -515,6 +515,15 @@ class MainWindow(QMainWindow):
         self._workers = []  # keep references alive while running
         self._bulk_delete_armed = {"components": False, "drivers": False}
 
+        # Staged (not-yet-written) Кексты changes - Up/Down reordering and
+        # the enable/disable checkbox both used to write to config.plist
+        # and rescan immediately on every single interaction; per direct
+        # request they now only update this in-memory state (and a cheap
+        # local re-render from the cached last_scan, no disk/network
+        # hit) until "Применить изменения" actually commits them.
+        self._kext_pending_order = None  # list[str] bundle order, or None
+        self._kext_pending_enabled = {}  # {bundle: bool}
+
         central = QWidget()
         self.setCentralWidget(central)
         root_layout = QVBoxLayout(central)
@@ -615,19 +624,37 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------- scan --
 
+    def _discard_pending_kext_changes(self):
+        """A fresh scan/check-updates supersedes any not-yet-applied
+        drag-reorder/enable-toggle staged in the Кексты table - keeping
+        them around against new data risks staging a change against a
+        bundle that no longer means what it did (renamed/removed/
+        updated). Warn rather than silently dropping them."""
+        if self._kext_pending_order is not None or self._kext_pending_enabled:
+            self.log("Несохранённые изменения (порядок/вкл-выкл) сброшены новым сканированием.")
+        self._kext_pending_order = None
+        self._kext_pending_enabled = {}
+
     def rescan(self):
+        """Per direct request, scanning also checks version availability
+        right away instead of requiring a separate "Проверить обновления"
+        click afterward - core.check_updates() already does scan_root()
+        plus the version lookups in one call, so this is now just an
+        alias for check_updates() with its own log wording."""
         self.clear_log()
         root = self.root_path()
         if not root:
             self.log("Укажите путь к EFI/OC.")
             return
+        self.log(f"Сканирую и проверяю доступные версии ({self.channel()})...")
 
         def on_done(data):
+            self._discard_pending_kext_changes()
             self.last_scan = data
             self.render_scan(data)
-            self.log("Скан завершён (без обращения к сети).")
+            self.log("Готово.")
 
-        self.run_worker(core.scan_root, root, on_success=on_done)
+        self.run_worker(core.check_updates, root, self.channel(), on_success=on_done)
 
     def check_updates(self):
         self.clear_log()
@@ -638,6 +665,7 @@ class MainWindow(QMainWindow):
         self.log(f"Проверяю GitHub ({self.channel()})...")
 
         def on_done(data):
+            self._discard_pending_kext_changes()
             self.last_scan = data
             self.render_scan(data)
             self.log("Готово.")
@@ -657,29 +685,30 @@ class MainWindow(QMainWindow):
         self.kexts_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         header = self.kexts_table.horizontalHeader()
         header.setSectionResizeMode(1, QHeaderView.Stretch)
-        # Drag-to-reorder changes the real Kernel->Add load order (Lilu
-        # needs to precede WhateverGreen, etc.) - not just a cosmetic
-        # reshuffle. QTableWidget's setCellWidget()'d widgets (the
-        # checkboxes/buttons in every row here) do NOT participate in
-        # Qt's internal row-move drag-and-drop, only QTableWidgetItems do
-        # - _render_kexts_table() therefore also stashes each row's
-        # bundle name as UserRole data on a plain (invisible) item in
-        # column 0, which IS what actually moves; _on_kexts_reordered()
-        # reads the new order back off those items once a drop lands,
-        # writes it, then rescans to rebuild every cell widget fresh in
-        # the new row order (they'd otherwise be left visually stuck at
-        # their pre-drag positions).
+        self.kexts_table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.kexts_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.kexts_table.setDragDropMode(QAbstractItemView.InternalMove)
-        self.kexts_table.setDragEnabled(True)
-        self.kexts_table.setDropIndicatorShown(True)
-        self.kexts_table.model().rowsMoved.connect(self._on_kexts_reordered)
         lay.addWidget(self.kexts_table, 1)
 
         btn_row = QHBoxLayout()
         select_all_btn = QPushButton("Выделить всё")
         select_all_btn.clicked.connect(lambda: self._select_all(self.kexts_table))
         btn_row.addWidget(select_all_btn)
+
+        # Drag-and-drop reordering turned out unreliable in practice -
+        # replaced per direct request with plain Up/Down buttons, gated
+        # on exactly one row's checkbox being checked (the same
+        # checkbox "Удалить" already uses for bulk selection - a kext
+        # with no Kernel->Add entry has nothing to reorder either, so
+        # disabling it there for unwired rows already covers this too).
+        self.kexts_up_btn = QPushButton("▲ Вверх")
+        self.kexts_up_btn.setEnabled(False)
+        self.kexts_up_btn.clicked.connect(lambda: self._move_selected_kext(-1))
+        btn_row.addWidget(self.kexts_up_btn)
+
+        self.kexts_down_btn = QPushButton("▼ Вниз")
+        self.kexts_down_btn.setEnabled(False)
+        self.kexts_down_btn.clicked.connect(lambda: self._move_selected_kext(1))
+        btn_row.addWidget(self.kexts_down_btn)
 
         add_btn = QPushButton("+ Добавить")
         add_btn.clicked.connect(lambda: AddKextDialog(self).exec())
@@ -688,6 +717,14 @@ class MainWindow(QMainWindow):
         update_btn = QPushButton("Обновить")
         update_btn.clicked.connect(self.update_all_components)
         btn_row.addWidget(update_btn)
+
+        self.kexts_apply_btn = QPushButton("Применить изменения")
+        self.kexts_apply_btn.setObjectName("primary")
+        self.kexts_apply_btn.setEnabled(False)
+        self.kexts_apply_btn.setToolTip("Порядок загрузки и вкл/выкл, изменённые перетягиванием/чекбоксом, "
+                                         "копятся здесь и пишутся в config.plist только по этой кнопке.")
+        self.kexts_apply_btn.clicked.connect(self.apply_kext_changes)
+        btn_row.addWidget(self.kexts_apply_btn)
 
         btn_row.addStretch(1)
 
@@ -892,93 +929,118 @@ class MainWindow(QMainWindow):
         self._render_opencore(data)
         self._cancel_bulk_delete("components")
         self._cancel_bulk_delete("drivers")
+        self._update_kexts_apply_button()
+        self._update_kext_move_buttons()
+
+    def _natural_kext_order(self):
+        """The bundle order scan_root() itself returned, before any
+        pending Up/Down move - used to detect "moved back to where it
+        started" (clears the pending order instead of leaving a no-op
+        staged) and as the base entries are reordered against."""
+        if not self.last_scan:
+            return []
+        return [k["bundle"] for c in self.last_scan["components"] for k in c["kexts"]]
+
+    def _original_kext_enabled(self, bundle):
+        """The real on-disk enabled state from the last scan, ignoring
+        any pending staged toggle - used to detect "toggled back to
+        where it started" the same way _natural_kext_order() does for
+        order."""
+        if not self.last_scan:
+            return None
+        for c in self.last_scan["components"]:
+            for k in c["kexts"]:
+                if k["bundle"] == bundle:
+                    return k.get("enabled")
+        return None
+
+    def _update_kexts_apply_button(self):
+        has_pending = self._kext_pending_order is not None or bool(self._kext_pending_enabled)
+        self.kexts_apply_btn.setEnabled(has_pending)
 
     def _render_kexts_table(self, data):
         table = self.kexts_table
         table.setRowCount(0)
 
-        def add_row(display_name, bundle_hint, k, badge=None):
+        # Build every row's data first, as plain dicts, so a pending
+        # Up/Down move can reorder the whole list before anything is
+        # actually inserted into the table widget.
+        entries = []
+        for c in data["components"]:
+            latest_text = c.get("latest_version") or ("ошибка" if c.get("error") else "?")
+            for k in c["kexts"]:
+                entries.append({
+                    "bundle": k["bundle"], "k": k, "display_name": c["name"], "bundle_hint": k["bundle"],
+                    "badge": None, "latest_text": latest_text,
+                    "release_url": c.get("release_url"), "source": c.get("source"),
+                })
+        # Kexts merely present in Kexts/ without being tracked in any
+        # component (scan_root()'s other_kexts_present/
+        # manual_only_kexts_present) are deliberately NOT shown here per
+        # direct request - this table is scoped to tracked components
+        # only again.
+
+        if self._kext_pending_order is not None:
+            by_bundle = {e["bundle"]: e for e in entries}
+            ordered = [by_bundle.pop(b) for b in self._kext_pending_order if b in by_bundle]
+            ordered.extend(by_bundle.values())  # anything not mentioned (shouldn't normally happen) stays, appended
+            entries = ordered
+
+        for entry in entries:
             row = table.rowCount()
             table.insertRow(row)
-
-            # A plain item carries the bundle name as UserRole data - this
-            # is what Qt's internal drag-move actually reorders (see the
-            # comment on setDragDropMode above); the visible checkbox is
-            # a separate cellWidget layered over the same cell.
-            order_item = QTableWidgetItem()
-            order_item.setData(Qt.UserRole, k["bundle"])
-            table.setItem(row, 0, order_item)
+            k = entry["k"]
 
             sel_cell = QWidget()
             sel_lay = QHBoxLayout(sel_cell)
             sel_lay.setContentsMargins(0, 0, 0, 0)
             sel_lay.setAlignment(Qt.AlignCenter)
             sel_cb = QCheckBox()
-            sel_cb.setProperty("bundle", k["bundle"])
+            sel_cb.setProperty("bundle", entry["bundle"])
             if not k.get("wired"):
                 sel_cb.setEnabled(False)
-                sel_cb.setToolTip("Не подключён в Kernel->Add - «Удалить» тут нечего убирать")
+                sel_cb.setToolTip("Не подключён в Kernel->Add - «Удалить»/перемещение тут ни при чём")
+            sel_cb.toggled.connect(self._update_kext_move_buttons)
             sel_lay.addWidget(sel_cb)
             table.setCellWidget(row, 0, sel_cell)
 
             name_cell = QWidget()
             name_lay = QHBoxLayout(name_cell)
             name_lay.setContentsMargins(4, 2, 4, 2)
-            name_text = QLabel(f"<b>{display_name}</b><br><span style='color:#888;font-size:11px;'>{bundle_hint}</span>")
+            hint_html = (f"<br><span style='color:#888;font-size:11px;'>{entry['bundle_hint']}</span>"
+                         if entry["bundle_hint"] else "")
+            name_text = QLabel(f"<b>{entry['display_name']}</b>{hint_html}")
             name_lay.addWidget(name_text)
-            if badge:
-                name_lay.addWidget(badge)
+            if entry["badge"]:
+                name_lay.addWidget(badge_label(*entry["badge"]))
             name_lay.addStretch(1)
             table.setCellWidget(row, 1, name_cell)
 
             local_ver = k.get("local_version") or ("?" if k.get("present") else "—")
             table.setItem(row, 2, QTableWidgetItem(local_ver))
-            return row
 
-        for c in data["components"]:
             latest_cell = QWidget()
             latest_lay = QHBoxLayout(latest_cell)
             latest_lay.setContentsMargins(4, 2, 4, 2)
-            latest_text = c.get("latest_version") or ("ошибка" if c.get("error") else "?")
-            latest_lbl = QLabel(latest_text)
-            if c.get("release_url"):
-                latest_lbl.setText(f"<a href='{c['release_url']}'>{latest_text}</a>")
-                latest_lbl.setOpenExternalLinks(True)
-            latest_lay.addWidget(latest_lbl)
-            sb = source_badge(c.get("source"))
+            if entry["release_url"]:
+                lbl = QLabel(f"<a href='{entry['release_url']}'>{entry['latest_text']}</a>")
+                lbl.setOpenExternalLinks(True)
+            else:
+                lbl = QLabel(entry["latest_text"])
+            latest_lay.addWidget(lbl)
+            sb = source_badge(entry["source"])
             if sb:
                 latest_lay.addWidget(sb)
             latest_lay.addStretch(1)
+            table.setCellWidget(row, 3, latest_cell)
 
-            for k in c["kexts"]:
-                row = add_row(c["name"], k["bundle"], k)
-                # clone the latest-version cell widget per row (Qt widgets
-                # can't be shared across cells) - cheap enough at this size
-                cell = QWidget()
-                cell_lay = QHBoxLayout(cell)
-                cell_lay.setContentsMargins(4, 2, 4, 2)
-                lbl = QLabel(latest_lbl.text())
-                lbl.setOpenExternalLinks(True)
-                cell_lay.addWidget(lbl)
-                sb2 = source_badge(c.get("source"))
-                if sb2:
-                    cell_lay.addWidget(sb2)
-                cell_lay.addStretch(1)
-                table.setCellWidget(row, 3, cell)
-                table.setCellWidget(row, 4, make_wire_or_toggle_widget(
-                    "kext", "bundle", k, self.wire_kext, self.toggle_kext))
-
-        for k in data.get("other_kexts_present", []):
-            row = add_row(k["bundle"], "", k, badge_label("на диске", "#fef3c7", "#92400e"))
-            table.setItem(row, 3, QTableWidgetItem("—"))
+            # Staged (not yet written) enable/disable overrides the
+            # disk-reported value for display purposes only.
+            display_k = dict(k)
+            if entry["bundle"] in self._kext_pending_enabled:
+                display_k["enabled"] = self._kext_pending_enabled[entry["bundle"]]
             table.setCellWidget(row, 4, make_wire_or_toggle_widget(
-                "kext", "bundle", k, self.wire_kext, self.toggle_kext))
-
-        for k in data.get("manual_only_kexts_present", []):
-            row = add_row(k["bundle"], "", k, badge_label("на диске, ручной", "#fef3c7", "#92400e"))
-            table.setItem(row, 3, QTableWidgetItem("—"))
-            table.setCellWidget(row, 4, make_wire_or_toggle_widget(
-                "kext", "bundle", k, self.wire_kext, self.toggle_kext))
+                "kext", "bundle", display_k, self.wire_kext, self._stage_kext_enabled))
 
     def _render_drivers_table(self, data):
         table = self.drivers_table
@@ -1113,44 +1175,110 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------ kexts --
 
-    def _on_kexts_reordered(self, *args):
-        """Fires after a drag-and-drop row move lands (connected to the
-        table model's own rowsMoved signal). Reads the new bundle order
-        back off column 0's items (the actual thing Qt moved - see the
-        setDragDropMode comment in _build_kexts_tab), writes it to
-        Kernel->Add, then rescans: the row cellWidgets themselves don't
-        follow a drag move and would otherwise be left showing the wrong
-        kext's checkbox/status at each position until rebuilt fresh."""
+    def _kext_row_checkboxes(self):
+        boxes = []
+        for r in range(self.kexts_table.rowCount()):
+            cell = self.kexts_table.cellWidget(r, 0)
+            cb = cell.findChild(QCheckBox) if cell else None
+            if cb:
+                boxes.append(cb)
+        return boxes
+
+    def _selected_kext_bundle_for_move(self):
+        """Up/Down only make sense for exactly one selected row - moving
+        several at once is ambiguous (relative order among themselves?
+        as a block?), so 0 or 2+ checked just disables both buttons."""
+        checked = [cb.property("bundle") for cb in self._kext_row_checkboxes() if cb.isChecked()]
+        return checked[0] if len(checked) == 1 else None
+
+    def _update_kext_move_buttons(self):
+        enabled = self._selected_kext_bundle_for_move() is not None
+        self.kexts_up_btn.setEnabled(enabled)
+        self.kexts_down_btn.setEnabled(enabled)
+
+    def _current_kext_order(self):
+        """What's actually displayed right now - the natural scan order
+        with any pending Up/Down move already folded in."""
+        return list(self._kext_pending_order) if self._kext_pending_order is not None else self._natural_kext_order()
+
+    def _move_selected_kext(self, direction):
+        """direction: -1 (up, loads earlier) or +1 (down, loads later).
+        Stages the swap (same _kext_pending_order used by "Применить
+        изменения") instead of writing immediately, then restores the
+        checkbox selection on the moved row so repeated clicks keep
+        moving the same kext without having to re-check it each time."""
+        bundle = self._selected_kext_bundle_for_move()
+        if not bundle:
+            self.log("Отметьте чекбоксом ровно один кекст, чтобы переместить его.")
+            return
+        order = self._current_kext_order()
+        idx = order.index(bundle)
+        new_idx = idx + direction
+        if new_idx < 0 or new_idx >= len(order):
+            return
+        order[idx], order[new_idx] = order[new_idx], order[idx]
+        self._kext_pending_order = None if order == self._natural_kext_order() else order
+        if self.last_scan:
+            self._render_kexts_table(self.last_scan)
+            for cb in self._kext_row_checkboxes():
+                if cb.property("bundle") == bundle:
+                    cb.setChecked(True)
+                    break
+        self._update_kexts_apply_button()
+        self._update_kext_move_buttons()
+
+    def _stage_kext_enabled(self, bundle, checked):
+        """Checkbox toggle handler for the Кексты table's Статус column -
+        per direct request, no longer writes to config.plist immediately,
+        just records the intent here (cleared again if toggled back to
+        the original on-disk value) until "Применить изменения" commits
+        it, same staging model as Up/Down reordering below."""
+        original = self._original_kext_enabled(bundle)
+        if original is not None and checked == original:
+            self._kext_pending_enabled.pop(bundle, None)
+        else:
+            self._kext_pending_enabled[bundle] = checked
+        if self.last_scan:
+            self._render_kexts_table(self.last_scan)
+        self._update_kexts_apply_button()
+        self._update_kext_move_buttons()
+
+    def apply_kext_changes(self):
+        """Commits whatever's staged (Up/Down moves and/or enable/disable
+        toggles) to config.plist in one go, then does a real rescan."""
         root = self.root_path()
         if not root:
+            self.log("Укажите путь к EFI/OC.")
             return
-        ordered_bundles = []
-        for r in range(self.kexts_table.rowCount()):
-            item = self.kexts_table.item(r, 0)
-            bundle = item.data(Qt.UserRole) if item else None
-            if bundle:
-                ordered_bundles.append(bundle)
-        try:
-            core.reorder_kexts_in_config(root, ordered_bundles)
-            self.log("Порядок загрузки кекстов обновлён.")
-        except Exception as e:
-            self.log(f"Изменение порядка: {e}")
-        self.rescan()
+        order = self._kext_pending_order
+        enabled_changes = dict(self._kext_pending_enabled)
+        if order is None and not enabled_changes:
+            return
+
+        def do_apply():
+            lines = []
+            if order is not None:
+                core.reorder_kexts_in_config(root, order)
+                lines.append("Порядок загрузки кекстов обновлён.")
+            for bundle, enabled in enabled_changes.items():
+                core.set_kext_enabled(root, bundle, enabled)
+                lines.append(f"{bundle}: {'включён' if enabled else 'выключен'}")
+            return lines
+
+        def on_done(lines):
+            for line in lines:
+                self.log(line)
+            self._kext_pending_order = None
+            self._kext_pending_enabled = {}
+            self.rescan()
+
+        self.run_worker(do_apply, on_success=on_done)
 
     def wire_kext(self, bundle):
         root = self.root_path()
         try:
             core.add_kext_to_config(root, bundle)
             self.log(f"{bundle}: добавлен в Kernel->Add")
-        except Exception as e:
-            self.log(f"{bundle}: ошибка - {e}")
-        self.rescan()
-
-    def toggle_kext(self, bundle, enabled):
-        root = self.root_path()
-        try:
-            core.set_kext_enabled(root, bundle, enabled)
-            self.log(f"{bundle}: {'включён' if enabled else 'выключен'}")
         except Exception as e:
             self.log(f"{bundle}: ошибка - {e}")
         self.rescan()

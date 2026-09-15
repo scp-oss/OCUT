@@ -538,6 +538,7 @@ class MainWindow(QMainWindow):
         folder = QFileDialog.getExistingDirectory(self, "Выберите папку EFI/OC")
         if folder:
             self.root_edit.setText(folder)
+            self.rescan()
 
     def root_path(self):
         return self.root_edit.text().strip()

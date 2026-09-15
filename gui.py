@@ -18,6 +18,7 @@ is an additional, now-default frontend, not a replacement that deletes
 the old one.
 """
 import os
+import subprocess
 import sys
 import traceback
 
@@ -34,6 +35,25 @@ from PySide6.QtWidgets import (
 import core
 
 APP_TITLE = "OCUT — обновление EFI/OC"
+
+
+def _git_short_commit():
+    """Current commit of this checkout, shown in the window title - so
+    "is this actually the latest code" (a real recurring question after
+    re-running run.sh) is answerable by looking at the title bar and
+    comparing against GitHub, instead of guessing or asking. "?" on any
+    failure (not a git checkout, git missing, etc.) - never worth
+    failing startup over."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", os.path.dirname(os.path.abspath(__file__)), "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return "?"
 
 STYLE_SHEET = """
 QWidget { font-size: 13px; }
@@ -488,7 +508,7 @@ class AddDriverDialog(QDialog):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(APP_TITLE)
+        self.setWindowTitle(f"{APP_TITLE} (commit {_git_short_commit()})")
         self.resize(1080, 780)
 
         self.last_scan = None

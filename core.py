@@ -844,6 +844,7 @@ def scan_root(root):
     kexts_dir = os.path.join(root, "Kexts")
 
     kernel_add_status = {}
+    kernel_add_order = []
     if os.path.isfile(_config_path(root)):
         try:
             entries = _load_config(root).get("Kernel", {}).get("Add", [])
@@ -851,6 +852,7 @@ def scan_root(root):
                 bp = e.get("BundlePath")
                 if bp:
                     kernel_add_status[bp] = bool(e.get("Enabled", False))
+                    kernel_add_order.append(bp)
         except Exception:
             pass  # malformed config.plist - report kexts as present/unwired rather than fail the whole scan
 
@@ -936,6 +938,18 @@ def scan_root(root):
         "opencore": oc_info,
         "drivers": drivers,
         "resources_theme": resources_state,
+        # The REAL Kernel->Add order, straight off the array - every
+        # BundlePath found, regardless of tracked/wired-extra status
+        # (a bundle with no file on disk can still appear here if
+        # config references one that's missing; callers that build a
+        # display list from actually-present kexts just won't find a
+        # match for it, which is harmless). Needed because `components`
+        # above is grouped by components.json's own static tracking
+        # order, not by real load order - a caller that wants "the kext
+        # order that's actually going to boot" (e.g. to detect whether a
+        # drag/Up-Down reorder actually took effect after a rescan) must
+        # use this field, not iteration order over `components`.
+        "kernel_add_order": kernel_add_order,
     }
 
 

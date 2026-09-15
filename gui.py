@@ -933,18 +933,30 @@ class MainWindow(QMainWindow):
         self._update_kext_move_buttons()
 
     def _natural_kext_order(self):
-        """The bundle order scan_root() itself returned, before any
-        pending Up/Down move - used to detect "moved back to where it
-        started" (clears the pending order instead of leaving a no-op
-        staged) and as the base entries are reordered against. Includes
-        wired-but-untracked kexts too (see _render_kexts_table's own
-        comment) - they're real Kernel->Add rows, so they need a place
-        in this order same as any tracked one."""
+        """The REAL Kernel->Add order (scan_root()'s kernel_add_order,
+        straight off the array) for every wired kext, plus any tracked-
+        but-unwired kext appended at the end (it has no real position -
+        its row-select checkbox is disabled anyway, so it never
+        participates in a move).
+
+        Live bug this fixes: a component's kexts used to be listed in
+        components.json's own static tracking order, which has nothing
+        to do with real load order - Up/Down + "Применить изменения"
+        would write the new order correctly, but the *immediate* rescan
+        right after redisplayed components.json's original order again,
+        making the change look reverted even though config.plist itself
+        was correct the whole time. This is also why the very first
+        scan of any EFI, before ever touching Up/Down once, could show
+        kexts in the wrong order relative to what actually boots."""
         if not self.last_scan:
             return []
-        order = [k["bundle"] for c in self.last_scan["components"] for k in c["kexts"]]
-        order += [k["bundle"] for k in self.last_scan.get("other_kexts_present", []) if k.get("wired")]
-        order += [k["bundle"] for k in self.last_scan.get("manual_only_kexts_present", []) if k.get("wired")]
+        order = list(self.last_scan.get("kernel_add_order", []))
+        order_set = set(order)
+        for c in self.last_scan["components"]:
+            for k in c["kexts"]:
+                if k["bundle"] not in order_set:
+                    order.append(k["bundle"])
+                    order_set.add(k["bundle"])
         return order
 
     def _original_kext_enabled(self, bundle):
@@ -1020,11 +1032,17 @@ class MainWindow(QMainWindow):
                     "release_url": None, "source": None, "outdated": None,
                 })
 
-        if self._kext_pending_order is not None:
-            by_bundle = {e["bundle"]: e for e in entries}
-            ordered = [by_bundle.pop(b) for b in self._kext_pending_order if b in by_bundle]
-            ordered.extend(by_bundle.values())  # anything not mentioned (shouldn't normally happen) stays, appended
-            entries = ordered
+        # Always impose an explicit order - either the pending Up/Down
+        # move, or (no pending change) the real _natural_kext_order()
+        # itself. This used to be conditional on a pending move only,
+        # which meant a plain (no-reorder-yet) render left `entries` in
+        # components.json's raw iteration order - exactly the bug
+        # _natural_kext_order()'s own docstring explains.
+        order_to_apply = self._kext_pending_order if self._kext_pending_order is not None else self._natural_kext_order()
+        by_bundle = {e["bundle"]: e for e in entries}
+        ordered = [by_bundle.pop(b) for b in order_to_apply if b in by_bundle]
+        ordered.extend(by_bundle.values())  # anything not mentioned (shouldn't normally happen) stays, appended
+        entries = ordered
 
         for entry in entries:
             row = table.rowCount()
@@ -1317,11 +1335,15 @@ class MainWindow(QMainWindow):
             return lines
 
         def on_done(lines):
-            for line in lines:
-                self.log(line)
             self._kext_pending_order = None
             self._kext_pending_enabled = {}
+            # rescan() clears the log immediately (synchronously) before
+            # starting its own async worker - logging these confirmation
+            # lines AFTER calling it (not before) is what keeps them from
+            # being wiped out the instant they'd otherwise appear.
             self.rescan()
+            for line in lines:
+                self.log(line)
 
         self.run_worker(do_apply, on_success=on_done)
 

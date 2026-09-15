@@ -13,6 +13,53 @@ REPO_URL="https://github.com/scp-oss/OCUT"
 BRANCH="claude/gifted-thompson-3q1e6m"
 REPO_DIR="$HOME/OCUT"
 
+# Covers macOS (Homebrew, or a nudge toward Xcode Command Line Tools if
+# Homebrew itself isn't installed) and the common Linux package managers -
+# minimal/server/container images (exactly the kind of environment someone
+# following a curl|bash quick start is likely running from) often don't
+# ship git at all.
+ensure_git() {
+    if command -v git >/dev/null 2>&1; then
+        return
+    fi
+    echo "git not found - attempting to install it..."
+    sudo_cmd=""
+    if [ "$(id -u)" != "0" ] && command -v sudo >/dev/null 2>&1; then
+        sudo_cmd="sudo"
+    fi
+    if [ "$(uname)" = "Darwin" ]; then
+        if command -v brew >/dev/null 2>&1; then
+            brew install git
+        else
+            echo "git is missing and Homebrew isn't installed. Run 'xcode-select --install' (opens a one-click installer), or install Homebrew first, then re-run this script." >&2
+            exit 1
+        fi
+    elif command -v apt-get >/dev/null 2>&1; then
+        $sudo_cmd apt-get update && $sudo_cmd apt-get install -y git
+    elif command -v dnf >/dev/null 2>&1; then
+        $sudo_cmd dnf install -y git
+    elif command -v yum >/dev/null 2>&1; then
+        $sudo_cmd yum install -y git
+    elif command -v pacman >/dev/null 2>&1; then
+        $sudo_cmd pacman -Sy --noconfirm git
+    elif command -v zypper >/dev/null 2>&1; then
+        $sudo_cmd zypper install -y git
+    elif command -v apk >/dev/null 2>&1; then
+        $sudo_cmd apk add git
+    elif command -v brew >/dev/null 2>&1; then
+        brew install git
+    else
+        echo "Could not detect a package manager to install git automatically. Please install git manually and re-run this script." >&2
+        exit 1
+    fi
+    if ! command -v git >/dev/null 2>&1; then
+        echo "git installation appears to have failed. Please install git manually and re-run this script." >&2
+        exit 1
+    fi
+}
+
+ensure_git
+
 if [ -d "$REPO_DIR/.git" ]; then
     git -C "$REPO_DIR" fetch origin
     git -C "$REPO_DIR" checkout "$BRANCH"

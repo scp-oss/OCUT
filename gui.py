@@ -1128,9 +1128,15 @@ class MainWindow(QMainWindow):
             sel_lay.setAlignment(Qt.AlignCenter)
             sel_cb = QCheckBox()
             sel_cb.setProperty("bundle", entry["bundle"])
+            sel_cb.setProperty("wired", bool(k.get("wired")))
             if not k.get("wired"):
-                sel_cb.setEnabled(False)
-                sel_cb.setToolTip("Не подключён в Kernel->Add - «Удалить»/перемещение тут ни при чём")
+                # Still selectable - "Удалить" untracks a component even
+                # if it was never wired (e.g. added but never actually
+                # downloaded), see remove_kexts_from_config_bulk(). Only
+                # Up/Down is genuinely meaningless here (nothing in
+                # Kernel->Add to reorder) - _selected_kext_bundle_for_move()
+                # excludes an unwired single selection from enabling those.
+                sel_cb.setToolTip("Не подключён в Kernel->Add - можно выбрать для удаления, но не для перемещения")
             sel_cb.toggled.connect(self._update_kext_move_buttons)
             sel_lay.addWidget(sel_cb)
             table.setCellWidget(row, 0, sel_cell)
@@ -1329,9 +1335,15 @@ class MainWindow(QMainWindow):
     def _selected_kext_bundle_for_move(self):
         """Up/Down only make sense for exactly one selected row - moving
         several at once is ambiguous (relative order among themselves?
-        as a block?), so 0 or 2+ checked just disables both buttons."""
-        checked = [cb.property("bundle") for cb in self._kext_row_checkboxes() if cb.isChecked()]
-        return checked[0] if len(checked) == 1 else None
+        as a block?), so 0 or 2+ checked just disables both buttons.
+        A single selected row that isn't wired also disables both -
+        it's still selectable (for "Удалить", see the checkbox setup in
+        _render_kexts_table()), but there's no real Kernel->Add position
+        to move it to or from."""
+        checked = [cb for cb in self._kext_row_checkboxes() if cb.isChecked()]
+        if len(checked) != 1 or not checked[0].property("wired"):
+            return None
+        return checked[0].property("bundle")
 
     def _update_kext_move_buttons(self):
         enabled = self._selected_kext_bundle_for_move() is not None

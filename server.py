@@ -19,12 +19,10 @@ import json
 import mimetypes
 import os
 import plistlib
-import tempfile
 import threading
 import time
 import traceback
 import webbrowser
-import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -163,11 +161,11 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, {"result": result, "log": log})
 
             elif parsed.path == "/api/migrate-config":
-                merged, report = self._migrate(body)
+                merged, report = core.fetch_new_sample_and_migrate(body["root"], body.get("channel", "stable"))
                 self._json(200, {"report": report, "preview": _plist_preview(merged)})
 
             elif parsed.path == "/api/migrate-config/save":
-                merged, report = self._migrate(body)
+                merged, report = core.fetch_new_sample_and_migrate(body["root"], body.get("channel", "stable"))
                 out_path = os.path.join(body["root"], body.get("out_name", "config.migrated.plist"))
                 with open(out_path, "wb") as f:
                     plistlib.dump(merged, f)
@@ -178,30 +176,6 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             traceback.print_exc()
             self._json(400, {"error": str(e)})
-
-    def _migrate(self, body):
-        """body: {root, new_opencore_zip_channel} - fetches the new
-        version's Docs/Sample.plist straight from the OpenCorePkg release
-        so the user doesn't have to hunt it down manually."""
-        root = body["root"]
-        old_config_path = os.path.join(root, "config.plist")
-        channel = body.get("channel", "stable")
-
-        tag, assets, _ = core.resolve_release(core.OPENCORE_REPO, channel)
-        asset_name, asset_url = core.pick_asset(assets)
-        with tempfile.TemporaryDirectory() as tmp:
-            zip_path = os.path.join(tmp, asset_name)
-            core.download(asset_url, zip_path)
-            extract_dir = os.path.join(tmp, "extracted")
-            with zipfile.ZipFile(zip_path) as z:
-                z.extractall(extract_dir)
-            sample_path = core.find_in_tree(extract_dir, "Sample.plist")
-            if not sample_path:
-                raise RuntimeError(f"Docs/Sample.plist not found in {asset_name}")
-            merged, report = core.migrate_config(old_config_path, sample_path)
-        report["target_version"] = tag
-        report["channel"] = channel
-        return merged, report
 
 
 def _plist_preview(d, max_len=20000):

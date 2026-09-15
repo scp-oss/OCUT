@@ -1295,3 +1295,26 @@ def migrate_config(old_config_path, new_sample_path):
     if "" in [r for r in report["copied"] if r == ""]:
         pass  # top level path is empty string, harmless
     return merged, report
+
+
+def fetch_new_sample_and_migrate(root, channel):
+    """Fetches the target OpenCorePkg release's own Docs/Sample.plist and
+    runs migrate_config() against it - shared by both the web server and
+    the native GUI so this (network fetch + extract + diff) logic exists
+    in exactly one place rather than being duplicated per frontend."""
+    old_config_path = os.path.join(root, "config.plist")
+    tag, assets, _ = resolve_release(OPENCORE_REPO, channel)
+    asset_name, asset_url = pick_asset(assets)
+    with tempfile.TemporaryDirectory() as tmp:
+        zip_path = os.path.join(tmp, asset_name)
+        download(asset_url, zip_path)
+        extract_dir = os.path.join(tmp, "extracted")
+        with zipfile.ZipFile(zip_path) as z:
+            z.extractall(extract_dir)
+        sample_path = find_in_tree(extract_dir, "Sample.plist")
+        if not sample_path:
+            raise RuntimeError(f"Docs/Sample.plist not found in {asset_name}")
+        merged, report = migrate_config(old_config_path, sample_path)
+    report["target_version"] = tag
+    report["channel"] = channel
+    return merged, report

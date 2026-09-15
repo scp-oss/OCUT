@@ -1301,14 +1301,27 @@ class MainWindow(QMainWindow):
         per direct request, no longer writes to config.plist immediately,
         just records the intent here (cleared again if toggled back to
         the original on-disk value) until "Применить изменения" commits
-        it, same staging model as Up/Down reordering below."""
+        it, same staging model as Up/Down reordering below.
+
+        Found while reviewing: this rebuilds the whole table (every
+        row-select checkbox included), which used to silently drop
+        whatever row(s) were checked for a move or a bulk delete -
+        toggling any row's enable/disable state would erase an in-
+        progress "Удалить" selection on completely unrelated rows.
+        Snapshotting and restoring the checked set around the rebuild
+        (same idea _move_selected_kext already used for its own, single-
+        row case) fixes that."""
         original = self._original_kext_enabled(bundle)
         if original is not None and checked == original:
             self._kext_pending_enabled.pop(bundle, None)
         else:
             self._kext_pending_enabled[bundle] = checked
         if self.last_scan:
+            selected = {cb.property("bundle") for cb in self._kext_row_checkboxes() if cb.isChecked()}
             self._render_kexts_table(self.last_scan)
+            for cb in self._kext_row_checkboxes():
+                if cb.property("bundle") in selected:
+                    cb.setChecked(True)
         self._update_kexts_apply_button()
         self._update_kext_move_buttons()
 

@@ -113,7 +113,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, {"components": result})
 
             elif parsed.path == "/api/kext/add-from-catalog":
-                self._json(200, core.add_kexts_from_catalog(body["names"]))
+                result = core.add_kexts_from_catalog(body["names"], body.get("root"), body.get("channel", "stable"), log)
+                self._json(200, {**result, "log": log})
 
             elif parsed.path == "/api/kext/list-in-folder":
                 self._json(200, {"kexts": core.list_kexts_in_folder(body["folder"])})

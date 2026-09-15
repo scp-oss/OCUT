@@ -205,7 +205,7 @@ def get_kext_catalog():
     return KEXT_CATALOG
 
 
-def add_kexts_from_catalog(names):
+def add_kexts_from_catalog(names, root, channel, log):
     """Add one or more catalog picks as tracked components, grouped by
     their real owner/repo - several catalog entries can share one repo
     (e.g. every VirtualSMC plugin, or BrcmPatchRAM's five kexts), and this
@@ -214,7 +214,23 @@ def add_kexts_from_catalog(names):
     no-op rather than a duplicate-name failure. A newly created
     component's name is the repo's own name (last path segment) - same
     auto-derivation as the manual add-by-repo path, there's no separate
-    user-typed name here either."""
+    user-typed name here either.
+
+    Per direct request, picking from the catalog behaves like OpenCore
+    Configurator's own "Download" button, not just a registration step:
+    every component touched by this selection gets downloaded into
+    Kexts/ right away via apply_kext_component() (same download/verify/
+    install path "Обновить" already uses - no separate logic to keep in
+    sync), even if that component was already tracked before (e.g.
+    IntelMausi is a DEFAULT_COMPONENTS entry - re-picking it from the
+    catalog on an EFI copy where the file was never actually fetched
+    used to be registered as a silent no-op and stayed "не подключён"
+    forever; now it downloads regardless of whether the tracking step
+    itself was new). Wiring into config.plist stays a separate, explicit
+    "+" click afterward, same as any other present-but-unwired kext."""
+    if not root:
+        raise RuntimeError("Укажите путь к EFI/OC - выбор из каталога сразу скачивает кекст в Kexts/.")
+
     catalog_by_name = {k["name"]: k for k in KEXT_CATALOG}
     unknown = [n for n in names if n not in catalog_by_name]
     if unknown:
@@ -223,6 +239,7 @@ def add_kexts_from_catalog(names):
     components = load_components()
     by_repo = {c["repo"]: c for c in components}
     added = []
+    touched_component_names = []
     for n in names:
         entry = catalog_by_name[n]
         repo = f"{entry['owner']}/{entry['repo']}"
@@ -235,8 +252,19 @@ def add_kexts_from_catalog(names):
         if bundle not in comp["kexts"]:
             comp["kexts"].append(bundle)
             added.append(bundle)
+        if comp["name"] not in touched_component_names:
+            touched_component_names.append(comp["name"])
     save_components(components)
-    return {"components": components, "added": added}
+
+    downloaded = []
+    for name in touched_component_names:
+        try:
+            result = apply_kext_component(name, root, channel, log)
+            downloaded.append(result["component"])
+        except Exception as e:
+            log.append(f"[{name}] ошибка скачивания: {e}")
+
+    return {"components": components, "added": added, "downloaded": downloaded}
 
 
 def list_kexts_in_folder(folder):

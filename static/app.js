@@ -512,13 +512,15 @@ function renderCatalogTable() {
 async function submitAddFromCatalog() {
   const boxes = Array.from(document.querySelectorAll('#catalog-table .catalog-select')).filter(cb => cb.checked);
   if (!boxes.length) { log('Отметьте хотя бы один кекст в каталоге.'); return; }
+  if (!root()) { log('Укажите путь к EFI/OC - выбор из каталога сразу скачивает кекст в Kexts/.'); return; }
   const names = boxes.map(cb => cb.dataset.value);
   try {
     const res = await api('/api/kext/add-from-catalog', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ names }),
+      body: JSON.stringify({ names, root: root(), channel: channel() }),
     });
     log(`Добавлено из каталога: ${res.added.join(', ') || '(уже были отслеживаемы)'}`);
+    res.log.forEach(log);
     closeAddComponent();
     scanRoot();
   } catch (e) {

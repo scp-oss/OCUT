@@ -168,7 +168,8 @@ function renderScan(data) {
     for (const k of c.kexts) {
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td><input type="checkbox" class="row-select" data-value="${k.bundle}"></td>
+        <td><input type="checkbox" class="row-select" data-value="${k.bundle}"
+            ${k.wired ? '' : 'disabled title="Не подключён в Kernel->Add - «Удалить» тут нечего убирать"'}></td>
         <td>${c.name}<br><span class="hint">${k.bundle}</span></td>
         <td>${k.local_version || (k.present ? '?' : '—')}</td>
         <td>${latest} ${sourceBadge}</td>
@@ -215,7 +216,8 @@ function renderScan(data) {
   for (const d of data.drivers) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><input type="checkbox" class="row-select" data-value="${d.file}"></td>
+      <td><input type="checkbox" class="row-select" data-value="${d.file}"
+          ${d.wired ? '' : 'disabled title="Не подключён в UEFI->Drivers - «Удалить» тут нечего убирать"'}></td>
       <td>${d.file}</td>
       <td>${d.last_known_version || '—'}</td>
       <td>${d.changed_since_last_update ? 'да' : 'нет'}</td>
@@ -245,7 +247,8 @@ function kextStatusActionHtml(k) {
 function extraKextRow(k, badgeText, badgeTitle) {
   const tr = document.createElement('tr');
   tr.innerHTML = `
-    <td><input type="checkbox" class="row-select" data-value="${k.bundle}"></td>
+    <td><input type="checkbox" class="row-select" data-value="${k.bundle}"
+        ${k.wired ? '' : 'disabled title="Не подключён в Kernel->Add - «Удалить» тут нечего убирать"'}></td>
     <td>${k.bundle} <span class="badge badge-ondisk" title="${badgeTitle}">${badgeText}</span></td>
     <td>${k.local_version || '?'}</td>
     <td>—</td>

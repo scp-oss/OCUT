@@ -861,6 +861,9 @@ class MainWindow(QMainWindow):
             sel_lay.setAlignment(Qt.AlignCenter)
             sel_cb = QCheckBox()
             sel_cb.setProperty("bundle", k["bundle"])
+            if not k.get("wired"):
+                sel_cb.setEnabled(False)
+                sel_cb.setToolTip("Не подключён в Kernel->Add - «Удалить» тут нечего убирать")
             sel_lay.addWidget(sel_cb)
             table.setCellWidget(row, 0, sel_cell)
 
@@ -936,6 +939,9 @@ class MainWindow(QMainWindow):
             sel_lay.setAlignment(Qt.AlignCenter)
             sel_cb = QCheckBox()
             sel_cb.setProperty("file", d["file"])
+            if not d.get("wired"):
+                sel_cb.setEnabled(False)
+                sel_cb.setToolTip("Не подключён в UEFI->Drivers - «Удалить» тут нечего убирать")
             sel_lay.addWidget(sel_cb)
             table.setCellWidget(row, 0, sel_cell)
 

@@ -240,8 +240,8 @@ class AddKextDialog(QDialog):
         self.catalog_filter.textChanged.connect(self._render_catalog_table)
         lay.addWidget(self.catalog_filter)
 
-        self.catalog_table = QTableWidget(0, 4)
-        self.catalog_table.setHorizontalHeaderLabels(["", "Название", "Категория", "Описание"])
+        self.catalog_table = QTableWidget(0, 5)
+        self.catalog_table.setHorizontalHeaderLabels(["", "Название", "Категория", "Описание", "Доступная версия"])
         self.catalog_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
         self.catalog_table.verticalHeader().setVisible(False)
         self.catalog_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -250,7 +250,7 @@ class AddKextDialog(QDialog):
         self._catalog_data = core.get_kext_catalog()
         self._render_catalog_table()
 
-        btn = QPushButton("Добавить выбранные")
+        btn = QPushButton("Применить")
         btn.setObjectName("primary")
         btn.clicked.connect(self._submit_catalog)
         lay.addWidget(btn)
@@ -279,6 +279,15 @@ class AddKextDialog(QDialog):
             self.catalog_table.setItem(r, 1, QTableWidgetItem(entry["name"]))
             self.catalog_table.setItem(r, 2, QTableWidgetItem(entry["category"]))
             self.catalog_table.setItem(r, 3, QTableWidgetItem(entry["description"]))
+            # "?" rather than a real fetched version - checking all ~77
+            # catalog entries against GitHub/Dortania up front just to
+            # populate this column would be slow and mostly wasted (only
+            # a handful ever get picked); the real version becomes known
+            # once it's actually downloaded ("Применить"), same moment
+            # any other update in this tool learns a version.
+            ver_item = QTableWidgetItem("?")
+            ver_item.setToolTip("Версия узнаётся при нажатии «Применить» - здесь не проверяется заранее для всего каталога.")
+            self.catalog_table.setItem(r, 4, ver_item)
 
     def _submit_catalog(self):
         names = []

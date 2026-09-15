@@ -560,7 +560,8 @@ function renderCatalogTable() {
       <td><input type="checkbox" class="catalog-select" data-value="${entry.name}"></td>
       <td>${entry.name}</td>
       <td>${entry.category}</td>
-      <td>${entry.description}</td>`;
+      <td>${entry.description}</td>
+      <td title="Версия узнаётся при нажатии «Применить» - здесь не проверяется заранее для всего каталога.">?</td>`;
     tbody.appendChild(tr);
   }
 }

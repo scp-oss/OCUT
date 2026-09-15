@@ -1,4 +1,4 @@
-# Windows equivalent of run.sh - clones %USERPROFILE%\OCUT on first run,
+# Windows equivalent of run.sh - clones %APPDATA%\OCUT on first run,
 # updates it to the latest commit on every later run, then starts the
 # native GUI (gui.py). Requires Python 3.9+ (from python.org or the
 # Microsoft Store) already on PATH - git is installed automatically via
@@ -10,7 +10,7 @@ $ErrorActionPreference = "Stop"
 
 $RepoUrl = "https://github.com/scp-oss/OCUT"
 $Branch = "claude/gifted-thompson-3q1e6m"
-$RepoDir = Join-Path $HOME "OCUT"
+$RepoDir = Join-Path $env:APPDATA "OCUT"
 
 # Resolved full path to git.exe, set by Ensure-Git. Every later git call in
 # this script goes through this variable (`& $GitCmd ...`) instead of the
@@ -68,8 +68,22 @@ if (Test-Path (Join-Path $RepoDir ".git")) {
 
 Set-Location $RepoDir
 
-python -c "import PySide6" 2>$null
-if ($LASTEXITCODE -ne 0) {
+# PySide6 not being importable yet (first run) makes `python -c "import
+# PySide6"` exit non-zero and print a traceback to stderr - exactly the
+# signal we're checking for, but under $ErrorActionPreference = "Stop"
+# a redirected (`2>`) native-command stderr line gets promoted to a
+# terminating error before the redirect ever discards it, crashing this
+# script instead of just letting us read $LASTEXITCODE. try/catch treats
+# that promoted error the same as a normal non-zero exit: PySide6 needs
+# installing.
+$needsPySide6 = $true
+try {
+    python -c "import PySide6" 2>$null
+    $needsPySide6 = ($LASTEXITCODE -ne 0)
+} catch {
+    $needsPySide6 = $true
+}
+if ($needsPySide6) {
     Write-Host "Installing PySide6 (one-time)..."
     python -m pip install --user -r requirements.txt
 }

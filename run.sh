@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
 # Universal launcher: clones ~/OCUT on first run, updates it to the latest
-# commit on every later run, then starts the native GUI (gui.py) by
-# default - pass --web as the first argument to launch the old
-# browser-based server.py instead (still fully maintained, just no
-# longer the default). Safe to re-run anytime to pick up updates - local
-# edits inside the repo are not expected (this is a managed checkout),
-# components.json (gitignored, your own tracked-kext list) is untouched
-# by `git reset --hard` either way.
+# commit on every later run, then starts the native GUI (gui.py). Safe to
+# re-run anytime to pick up updates - local edits inside the repo are not
+# expected (this is a managed checkout), components.json (gitignored,
+# your own tracked-kext list) is untouched by `git reset --hard` either way.
 set -e
 
 REPO_URL="https://github.com/scp-oss/OCUT"
@@ -69,11 +66,6 @@ else
 fi
 
 cd "$REPO_DIR"
-
-if [ "$1" = "--web" ]; then
-    shift
-    exec python3 server.py "$@"
-fi
 
 # The native GUI needs PySide6 - the one pip dependency this project
 # accepts (tkinter ships with Python but can't get anywhere near the

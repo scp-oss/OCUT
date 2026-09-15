@@ -1002,67 +1002,6 @@ def format_opencore_version(raw):
     return f"{'.'.join(digits)} ({date})"
 
 
-def pick_folder_native(prompt="Choose the EFI/OC folder"):
-    """Real native macOS folder picker via osascript - no GUI toolkit
-    dependency needed, ships on every Mac. Returns {"path": ...} or
-    {"cancelled": True} (user hit Cancel) or {"unavailable": True} (not
-    macOS / no osascript - caller should fall back to browse_dir())."""
-    script = f'POSIX path of (choose folder with prompt "{prompt}")'
-    try:
-        result = subprocess.run(
-            ["osascript", "-e", script],
-            capture_output=True, text=True, timeout=300,
-        )
-    except FileNotFoundError:
-        return {"unavailable": True}
-
-    if result.returncode != 0:
-        if "User canceled" in result.stderr or "(-128)" in result.stderr:
-            return {"cancelled": True}
-        raise RuntimeError(result.stderr.strip() or "osascript failed")
-
-    return {"path": result.stdout.strip()}
-
-
-def looks_like_efi_oc(path):
-    return os.path.isdir(os.path.join(path, "Kexts")) and os.path.isfile(os.path.join(path, "config.plist"))
-
-
-def browse_dir(path):
-    """Directory listing for the in-browser folder picker. The server has
-    full local filesystem access (it runs on your own machine), a plain
-    browser tab never can - this is what stands in for a native 'choose
-    folder' dialog. Returns subdirectories only, sorted, with a flag for
-    ones that already look like a real EFI/OC folder."""
-    path = os.path.abspath(path or os.path.expanduser("~"))
-    if not os.path.isdir(path):
-        raise RuntimeError(f"'{path}' is not a directory")
-
-    entries = []
-    try:
-        with os.scandir(path) as it:
-            for entry in it:
-                try:
-                    if entry.is_dir(follow_symlinks=True):
-                        entries.append(entry.name)
-                except OSError:
-                    continue  # unreadable/broken entry - skip, don't fail the whole listing
-    except PermissionError:
-        raise RuntimeError(f"нет доступа к '{path}'")
-
-    entries.sort(key=str.lower)
-    parent = os.path.dirname(path) if path != os.path.dirname(path) else None
-    return {
-        "path": path,
-        "parent": parent,
-        "is_efi_oc": looks_like_efi_oc(path),
-        "dirs": [
-            {"name": name, "is_efi_oc": looks_like_efi_oc(os.path.join(path, name))}
-            for name in entries
-        ],
-    }
-
-
 def check_updates(root, channel):
     """One Dortania manifest fetch (covers every component at once) plus a
     per-component GitHub fallback call only where needed. Returns

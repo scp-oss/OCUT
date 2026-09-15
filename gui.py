@@ -5,17 +5,11 @@ folder's kexts, OpenCore.efi, Drivers, theme, and migrating config.plist
 across OpenCore versions. Built on PySide6 (Qt) - the one dependency
 this project accepts a `pip install` for, per direct request for a
 modern, native-looking interface (styled after OpenCore Configurator's
-own Kexts Installer dialog) rather than the plain HTML/CSS the browser
-version (server.py) used. All the actual logic still lives in core.py,
+own Kexts Installer dialog). All the actual logic lives in core.py,
 completely UI-framework-agnostic - this file is purely presentation and
-event wiring, same separation server.py already kept.
+event wiring.
 
     python3 gui.py
-
-server.py/static/ are untouched and still work exactly as before for
-anyone who prefers running it headless/remote through a browser - this
-is an additional, now-default frontend, not a replacement that deletes
-the old one.
 """
 import os
 import subprocess
@@ -221,12 +215,11 @@ def make_wire_or_toggle_widget(kind, key, item, on_wire, on_toggle):
 class AddKextDialog(QDialog):
     """Modal "+ Добавить" dialog for the Кексты table - styled after
     OpenCore Configurator's own Kexts Installer window (checkbox table +
-    Download), split into three tabs matching what the browser version
-    already offers: pick from the curated catalog (auto-downloads,
-    same as OpenCore Configurator's own Download button), import an
-    already-extracted .kext from somewhere on disk, or type an
-    owner/repo by hand. All three end by asking the main window to
-    re-scan so the table reflects whatever changed."""
+    Download), split into three tabs: pick from the curated catalog
+    (auto-downloads, same as OpenCore Configurator's own Download
+    button), import an already-extracted .kext from somewhere on disk,
+    or type an owner/repo by hand. All three end by asking the main
+    window to re-scan so the table reflects whatever changed."""
 
     def __init__(self, main_window):
         super().__init__(main_window)

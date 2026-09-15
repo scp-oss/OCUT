@@ -23,7 +23,7 @@ import sys
 import traceback
 
 from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QCheckBox, QComboBox, QDialog,
     QFileDialog, QFrame, QGroupBox, QHBoxLayout, QHeaderView, QLabel,
@@ -936,22 +936,34 @@ class MainWindow(QMainWindow):
         """The bundle order scan_root() itself returned, before any
         pending Up/Down move - used to detect "moved back to where it
         started" (clears the pending order instead of leaving a no-op
-        staged) and as the base entries are reordered against."""
+        staged) and as the base entries are reordered against. Includes
+        wired-but-untracked kexts too (see _render_kexts_table's own
+        comment) - they're real Kernel->Add rows, so they need a place
+        in this order same as any tracked one."""
         if not self.last_scan:
             return []
-        return [k["bundle"] for c in self.last_scan["components"] for k in c["kexts"]]
+        order = [k["bundle"] for c in self.last_scan["components"] for k in c["kexts"]]
+        order += [k["bundle"] for k in self.last_scan.get("other_kexts_present", []) if k.get("wired")]
+        order += [k["bundle"] for k in self.last_scan.get("manual_only_kexts_present", []) if k.get("wired")]
+        return order
 
     def _original_kext_enabled(self, bundle):
         """The real on-disk enabled state from the last scan, ignoring
         any pending staged toggle - used to detect "toggled back to
         where it started" the same way _natural_kext_order() does for
-        order."""
+        order. Also checks wired-but-untracked kexts (see
+        _render_kexts_table's own comment) since those are toggleable
+        rows too now."""
         if not self.last_scan:
             return None
         for c in self.last_scan["components"]:
             for k in c["kexts"]:
                 if k["bundle"] == bundle:
                     return k.get("enabled")
+        for k in (self.last_scan.get("other_kexts_present", []) +
+                  self.last_scan.get("manual_only_kexts_present", [])):
+            if k["bundle"] == bundle:
+                return k.get("enabled")
         return None
 
     def _update_kexts_apply_button(self):
@@ -973,12 +985,40 @@ class MainWindow(QMainWindow):
                     "bundle": k["bundle"], "k": k, "display_name": c["name"], "bundle_hint": k["bundle"],
                     "badge": None, "latest_text": latest_text,
                     "release_url": c.get("release_url"), "source": c.get("source"),
+                    # None (unknown, e.g. the version check itself errored)
+                    # is deliberately NOT treated as "needs updating" - only
+                    # a definite True highlights the row and definite False
+                    # gets skipped by update_all_components() below.
+                    "outdated": c.get("outdated"),
                 })
-        # Kexts merely present in Kexts/ without being tracked in any
-        # component (scan_root()'s other_kexts_present/
-        # manual_only_kexts_present) are deliberately NOT shown here per
-        # direct request - this table is scoped to tracked components
-        # only again.
+        # Untracked kexts (scan_root()'s other_kexts_present/
+        # manual_only_kexts_present) are shown only if actually WIRED.
+        # Live discrepancy found by comparing against OpenCore
+        # Configurator's own Kernel->Add view on the same real EFI:
+        # hiding ALL untracked kexts (an earlier direct request, meant
+        # for genuinely inert clutter "просто лежащие в папке") also
+        # hid UTBDefault.kext/XHCI-unsupported.kext - real, active,
+        # wired entries actually controlling USB port mapping, just
+        # without an upstream to check versions against. The right line
+        # is wired vs not, not tracked-for-updates vs not: an unwired
+        # untracked file is inert noise (stays hidden), a wired one is
+        # real config Configurator itself would show (now shown here
+        # too, with a badge instead of a component name since nothing
+        # tracks where it came from).
+        for k in data.get("other_kexts_present", []):
+            if k.get("wired"):
+                entries.append({
+                    "bundle": k["bundle"], "k": k, "display_name": k["bundle"], "bundle_hint": "",
+                    "badge": ("на диске", "#fef3c7", "#92400e"), "latest_text": "—",
+                    "release_url": None, "source": None, "outdated": None,
+                })
+        for k in data.get("manual_only_kexts_present", []):
+            if k.get("wired"):
+                entries.append({
+                    "bundle": k["bundle"], "k": k, "display_name": k["bundle"], "bundle_hint": "",
+                    "badge": ("ручной, без апстрима", "#fef3c7", "#92400e"), "latest_text": "—",
+                    "release_url": None, "source": None, "outdated": None,
+                })
 
         if self._kext_pending_order is not None:
             by_bundle = {e["bundle"]: e for e in entries}
@@ -1017,7 +1057,10 @@ class MainWindow(QMainWindow):
             table.setCellWidget(row, 1, name_cell)
 
             local_ver = k.get("local_version") or ("?" if k.get("present") else "—")
-            table.setItem(row, 2, QTableWidgetItem(local_ver))
+            local_ver_item = QTableWidgetItem(local_ver)
+            if entry.get("outdated"):
+                local_ver_item.setBackground(QColor("#d1fae5"))
+            table.setItem(row, 2, local_ver_item)
 
             latest_cell = QWidget()
             latest_lay = QHBoxLayout(latest_cell)
@@ -1032,6 +1075,14 @@ class MainWindow(QMainWindow):
             if sb:
                 latest_lay.addWidget(sb)
             latest_lay.addStretch(1)
+            if entry.get("outdated"):
+                # Кексты that will actually be re-downloaded by "Обновить"
+                # (local version differs from what's available) - per
+                # direct request, highlighted green; a kext whose version
+                # already matches gets no highlight and update_all_
+                # components() skips it entirely instead of re-downloading
+                # something that's already current.
+                latest_cell.setStyleSheet("background-color: #d1fae5;")
             table.setCellWidget(row, 3, latest_cell)
 
             # Staged (not yet written) enable/disable overrides the
@@ -1284,14 +1335,30 @@ class MainWindow(QMainWindow):
         self.rescan()
 
     def update_all_components(self):
+        """Per direct request: a component whose local version already
+        matches what's available (outdated is definitely False) gets
+        skipped entirely - no point re-downloading + re-backing-up
+        something that wouldn't change anything. outdated is None
+        (unknown - e.g. the version check itself errored) is NOT treated
+        as "known up to date", so it's still attempted rather than
+        silently skipped on ambiguous data."""
         if not self.last_scan:
             self.log("Сначала сканируйте.")
             return
-        names = [c["name"] for c in self.last_scan["components"]]
-        if QMessageBox.question(self, "Обновить всё", f"Обновить все отслеживаемые кексты ({len(names)})?") != QMessageBox.Yes:
+        names = [c["name"] for c in self.last_scan["components"] if c.get("outdated") is not False]
+        skipped = [c["name"] for c in self.last_scan["components"] if c.get("outdated") is False]
+        if not names:
+            self.log("Все отслеживаемые кексты уже актуальны - обновлять нечего.")
+            return
+        prompt = f"Обновить кексты с устаревшей версией ({len(names)})?"
+        if skipped:
+            prompt += f" Уже актуальны и будут пропущены: {', '.join(skipped)}."
+        if QMessageBox.question(self, "Обновить всё", prompt) != QMessageBox.Yes:
             return
         root = self.root_path()
         channel = self.channel()
+        if skipped:
+            self.log(f"Пропущены как уже актуальные: {', '.join(skipped)}")
 
         def update_next(remaining):
             if not remaining:

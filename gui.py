@@ -17,7 +17,7 @@ import sys
 import traceback
 
 from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor, QFont, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QCheckBox, QComboBox, QDialog,
     QFileDialog, QFrame, QGroupBox, QHBoxLayout, QHeaderView, QLabel,
@@ -50,14 +50,15 @@ def _git_short_commit():
     return "?"
 
 STYLE_SHEET = """
-QWidget { font-size: 13px; }
+QWidget { font-size: 13px; color: #1d1d1f; }
 QMainWindow, QDialog { background: #f5f5f7; }
 QLineEdit, QComboBox {
-    padding: 5px 8px; border: 1px solid #d0d0d5; border-radius: 6px; background: white;
+    padding: 5px 8px; border: 1px solid #d0d0d5; border-radius: 6px; background: white; color: #1d1d1f;
 }
+QComboBox QAbstractItemView { background: white; color: #1d1d1f; }
 QPushButton {
     padding: 6px 14px; border-radius: 6px; border: 1px solid #d0d0d5;
-    background: #ffffff;
+    background: #ffffff; color: #1d1d1f;
 }
 QPushButton:hover { background: #eef2ff; border-color: #b8c4f0; }
 QPushButton:disabled { color: #aaa; background: #f0f0f0; }
@@ -66,22 +67,22 @@ QPushButton#primary:hover { background: #0077ed; }
 QPushButton#danger { background: #d93025; color: white; border: none; font-weight: 600; }
 QPushButton#danger:hover { background: #e6392e; }
 QTableWidget {
-    background: white; border: 1px solid #e2e2e6; border-radius: 8px;
+    background: white; color: #1d1d1f; border: 1px solid #e2e2e6; border-radius: 8px;
     gridline-color: #eee; alternate-background-color: #fafafc;
 }
 QHeaderView::section {
-    background: #f0f0f3; padding: 6px; border: none; border-bottom: 1px solid #ddd;
+    background: #f0f0f3; color: #1d1d1f; padding: 6px; border: none; border-bottom: 1px solid #ddd;
     font-weight: 600;
 }
 QTabWidget::pane { border: 1px solid #e2e2e6; border-radius: 8px; top: -1px; background: white; }
 QTabBar::tab {
     padding: 7px 16px; margin-right: 2px; border-top-left-radius: 6px; border-top-right-radius: 6px;
-    background: #ebebef;
+    background: #ebebef; color: #1d1d1f;
 }
 QTabBar::tab:selected { background: white; font-weight: 600; }
 QGroupBox {
     border: 1px solid #e2e2e6; border-radius: 8px; margin-top: 10px; padding-top: 14px;
-    font-weight: 600;
+    font-weight: 600; color: #1d1d1f;
 }
 QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; }
 #LogPanel { background: #111318; color: #dcdcdc; border-radius: 8px; padding: 6px; }
@@ -1522,6 +1523,27 @@ class MainWindow(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
+    # Force a fixed, non-OS-theme-following style + an explicit light
+    # palette. Without this, Qt6 on a Windows machine with system dark
+    # mode enabled picks a light default text color for anything this
+    # stylesheet doesn't give an explicit `color:` (plain buttons,
+    # combo boxes, tab labels, table headers) - invisible or near-
+    # invisible against the light backgrounds this UI is built around,
+    # while only the few widgets styled with an explicit color (primary/
+    # danger buttons, disabled state) stayed legible. Confirmed live:
+    # "Кексты" tab and "Выбрать папку.../Сканировать" buttons rendered
+    # completely blank on a real Windows 11 dark-mode machine.
+    app.setStyle("Fusion")
+    palette = app.palette()
+    palette.setColor(QPalette.Window, QColor("#f5f5f7"))
+    palette.setColor(QPalette.WindowText, QColor("#1d1d1f"))
+    palette.setColor(QPalette.Base, QColor("#ffffff"))
+    palette.setColor(QPalette.Text, QColor("#1d1d1f"))
+    palette.setColor(QPalette.Button, QColor("#ffffff"))
+    palette.setColor(QPalette.ButtonText, QColor("#1d1d1f"))
+    palette.setColor(QPalette.ToolTipBase, QColor("#ffffff"))
+    palette.setColor(QPalette.ToolTipText, QColor("#1d1d1f"))
+    app.setPalette(palette)
     app.setStyleSheet(STYLE_SHEET)
     window = MainWindow()
     window.show()

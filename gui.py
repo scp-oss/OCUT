@@ -89,6 +89,12 @@ QLineEdit, QComboBox {{
     background: {c['input_bg']}; color: {c['text']};
 }}
 QComboBox QAbstractItemView {{ background: {c['input_bg']}; color: {c['text']}; }}
+QCheckBox::indicator {{
+    width: 15px; height: 15px; border: 1px solid {c['input_border']}; border-radius: 4px;
+    background: {c['input_bg']};
+}}
+QCheckBox::indicator:checked {{ background: #0071e3; border-color: #0071e3; }}
+QCheckBox::indicator:disabled {{ background: {c['disabled_bg']}; border-color: {c['disabled_bg']}; }}
 QPushButton {{
     padding: 6px 14px; border-radius: 6px; border: 1px solid {c['input_border']};
     background: {c['surface_bg']}; color: {c['text']};
@@ -157,6 +163,14 @@ def apply_theme(app, scheme):
     palette.setColor(QPalette.ButtonText, QColor(c["text"]))
     palette.setColor(QPalette.ToolTipBase, QColor(c["surface_bg"]))
     palette.setColor(QPalette.ToolTipText, QColor(c["text"]))
+    # Highlight/HighlightedText weren't set before - Fusion uses them to
+    # paint a checked QCheckBox's indicator (and selected table rows),
+    # so leaving them at whatever the OS/Fusion default happens to be
+    # could make a genuinely checked checkbox hard to tell from an
+    # unchecked one against our custom Base/Button colors above. Same
+    # accent blue as the primary button, for visual consistency.
+    palette.setColor(QPalette.Highlight, QColor("#0071e3"))
+    palette.setColor(QPalette.HighlightedText, QColor("#ffffff"))
     app.setPalette(palette)
     app.setStyleSheet(build_style_sheet(c))
 
@@ -1534,7 +1548,7 @@ class MainWindow(QMainWindow):
             if self.oc_part_resources.isChecked():
                 parts.append("resources")
         if not parts:
-            self.log("Ничего не выбрано.")
+            self.log("Ничего не выбрано - отметьте OpenCore.efi / Drivers/*.efi / Resources выше и нажмите ещё раз.")
             return
         if QMessageBox.question(self, "Обновить OpenCorePkg",
                                  f"Применить к OpenCorePkg ({', '.join(parts)})? "

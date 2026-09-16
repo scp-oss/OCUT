@@ -464,8 +464,20 @@ def backup_oc_folder_zip(root):
 # --------------------------------------------------------- filesystem ----
 
 def find_in_tree(root, name):
+    """Matches a DIRECTORY only (e.g. a .kext bundle) - os.walk's dirnames,
+    never filenames. For a plain file, use find_file_in_tree() instead;
+    this was called for "Sample.plist" (a file) for a while, which could
+    never have matched anything since dirnames never contains it - found
+    while actually exercising the migration feature for the first time."""
     for dirpath, dirnames, _ in os.walk(root):
         if name in dirnames:
+            return os.path.join(dirpath, name)
+    return None
+
+
+def find_file_in_tree(root, name):
+    for dirpath, _, filenames in os.walk(root):
+        if name in filenames:
             return os.path.join(dirpath, name)
     return None
 
@@ -1196,10 +1208,36 @@ def apply_theme(repo, root, log, ref=None):
 
 # ------------------------------------------------------- config migration --
 
+# DeviceProperties.Add/Delete and NVRAM.Add/Delete are dicts KEYED BY THE
+# USER'S OWN DATA (a PCI device path, an NVRAM vendor GUID) - unlike every
+# other dict in the schema (Kernel.Quirks, UEFI.Quirks, Misc.Boot, ...),
+# where the key set is a fixed, OpenCore-defined list of option names that
+# Sample.plist enumerates completely. Sample.plist's own entry here (one
+# placeholder PCI path, three commonly-used GUIDs) is a documentation
+# EXAMPLE, not the schema - it never means "these are the only valid
+# top-level keys." Confirmed as a real, reproducible bug migrating a live
+# config: the generic dict-merge below iterates the NEW side's keys and
+# reports anything only on the OLD side as merely "removed_in_new" while
+# actually dropping it from the returned result - for a real board, the
+# user's actual DeviceProperties.Add entry (keyed by their own PCI path,
+# e.g. their onboard audio controller's layout-id) was silently replaced
+# by Sample.plist's own unrelated placeholder device. These four paths are
+# pure user/hardware data with no OpenCore-versioned schema to migrate
+# against at all - passed through completely unchanged.
+OPAQUE_USER_DATA_PATHS = {
+    "DeviceProperties.Add", "DeviceProperties.Delete",
+    "NVRAM.Add", "NVRAM.Delete",
+}
+
+
 def _merge_value(old_val, new_val, path, report):
     """Returns the merged value for one key path. `new_val` is the value
     from the NEW version's Sample.plist (i.e. the target schema/shape);
     `old_val` is what the user currently has."""
+    if path in OPAQUE_USER_DATA_PATHS:
+        report["copied"].append(f"{path} (user/hardware-keyed data, kept as-is verbatim)")
+        return old_val
+
     if type(old_val) is not type(new_val) and not (
         isinstance(old_val, (int, float)) and isinstance(new_val, (int, float))
     ):
@@ -1214,6 +1252,14 @@ def _merge_value(old_val, new_val, path, report):
             if key in old_val:
                 result[key] = _merge_value(old_val[key], new_sub, sub_path, report)
                 report["copied"].append(sub_path)
+            elif isinstance(key, str) and key.startswith("#"):
+                # Sample.plist's own instructional comments (e.g. top-level
+                # "#WARNING - This is just a sample. Do NOT try loading
+                # it.") - real documentation for someone reading the
+                # sample file, nonsensical injected into an actual,
+                # already-customized config. Not a schema key, never
+                # carried over.
+                continue
             else:
                 result[key] = new_sub
                 report["kept_new_default"].append(sub_path)
@@ -1296,17 +1342,30 @@ def fetch_new_sample_and_migrate(root, channel):
     """Fetches the target OpenCorePkg release's own Docs/Sample.plist and
     runs migrate_config() against it - shared by both the web server and
     the native GUI so this (network fetch + extract + diff) logic exists
-    in exactly one place rather than being duplicated per frontend."""
+    in exactly one place rather than being duplicated per frontend.
+
+    Tries the Dortania build manifest first, same as apply_opencore() -
+    found the hard way while actually running a migration for real: this
+    used to call resolve_release() (raw, unauthenticated GitHub API)
+    directly, and hit GitHub's 60-req/hour rate limit with a bare 403,
+    even though apply_opencore() right above already solved exactly this
+    for the same repo."""
     old_config_path = os.path.join(root, "config.plist")
-    tag, assets, _ = resolve_release(OPENCORE_REPO, channel)
-    asset_name, asset_url = pick_asset(assets)
+    manifest = None
+    try:
+        manifest = fetch_dortania_manifest()
+    except Exception:
+        pass  # falls back to GitHub releases below, same as apply_opencore()
+    build = resolve_component_build({"name": "OpenCorePkg", "repo": OPENCORE_REPO}, channel, manifest)
+    tag, asset_url = build["version"], build["asset_url"]
+    asset_name = os.path.basename(asset_url)
     with tempfile.TemporaryDirectory() as tmp:
         zip_path = os.path.join(tmp, asset_name)
         download(asset_url, zip_path)
         extract_dir = os.path.join(tmp, "extracted")
         with zipfile.ZipFile(zip_path) as z:
             z.extractall(extract_dir)
-        sample_path = find_in_tree(extract_dir, "Sample.plist")
+        sample_path = find_file_in_tree(extract_dir, "Sample.plist")
         if not sample_path:
             raise RuntimeError(f"Docs/Sample.plist not found in {asset_name}")
         merged, report = migrate_config(old_config_path, sample_path)
